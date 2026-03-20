@@ -38,6 +38,25 @@ PLACEHOLDERS = {
 }
 
 
+# Pesos dos dois fatores do scoring por pergunta
+PESO_SEMANTICO = 1  # Peso da similaridade semântica
+PESO_CLAIMS = 2     # Peso da taxa de correspondência de claims
+
+
+def calcular_score_pergunta(match_semantico: float, taxa_claims: float) -> float:
+    """Calcula o score de uma pergunta pela média ponderada dos dois fatores.
+
+    Args:
+        match_semantico: Percentual de match semântico (0-100).
+        taxa_claims: Percentual de atingimento de claims (0-100).
+
+    Returns:
+        Score final da pergunta (0-100).
+    """
+    soma_pesos = PESO_SEMANTICO + PESO_CLAIMS
+    return (PESO_SEMANTICO * match_semantico + PESO_CLAIMS * taxa_claims) / soma_pesos
+
+
 def calcular_score_ponderado(results: list[dict]) -> float:
     """Calcula o score final ponderado, normalizando pelos pesos das perguntas respondidas."""
     scores_validos = [(r["Pergunta"], r["Score"]) for r in results if r["Score"] >= 0]

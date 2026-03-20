@@ -421,6 +421,9 @@ if avaliar:
                 "Resposta Oficial": resposta_oficial,
                 "Resposta IA": result.get("resposta_ia", ""),
                 "Score": result.get("score", -1),
+                "Match Semântico": result.get("match_semantico", -1),
+                "Taxa Claims": result.get("taxa_claims", -1),
+                "Score Gemini Original": result.get("score_gemini_original", -1),
                 "Justificativa": result.get("justificativa", ""),
             }
             if result.get("fontes"):
@@ -460,9 +463,14 @@ if st.session_state.get("results"):
         with st.expander("Saúde da Avaliação", expanded=False):
             _render_health_panel(health)
 
-    # Tabela resumo compacta (só scores)
+    # Tabela resumo compacta com breakdown
     df_resumo = pd.DataFrame([
-        {"Pergunta": r["Pergunta"], "Score": r["Score"]}
+        {
+            "Pergunta": r["Pergunta"],
+            "Match Semântico": r.get("Match Semântico", -1),
+            "Taxa Claims": r.get("Taxa Claims", -1),
+            "Score": r["Score"],
+        }
         for r in results
     ])
     st.dataframe(
@@ -470,8 +478,14 @@ if st.session_state.get("results"):
         use_container_width=True,
         hide_index=True,
         column_config={
+            "Match Semântico": st.column_config.ProgressColumn(
+                "Match Semântico (peso 1)", min_value=0, max_value=100, format="%.1f",
+            ),
+            "Taxa Claims": st.column_config.ProgressColumn(
+                "Taxa Claims (peso 2)", min_value=0, max_value=100, format="%.1f",
+            ),
             "Score": st.column_config.ProgressColumn(
-                "Score", min_value=0, max_value=100, format="%d",
+                "Score Final", min_value=0, max_value=100, format="%.1f",
             ),
         },
     )
@@ -496,6 +510,15 @@ if st.session_state.get("results"):
             with col_right:
                 st.markdown("**Resposta da IA:**")
                 st.markdown(r["Resposta IA"])
+
+            # Breakdown do score
+            if r.get("Match Semântico", -1) >= 0:
+                st.divider()
+                sc1, sc2, sc3, sc4 = st.columns(4)
+                sc1.metric("Match Semântico", f"{r['Match Semântico']:.1f}%", help="Peso 1")
+                sc2.metric("Taxa de Claims", f"{r['Taxa Claims']:.1f}%", help="Peso 2")
+                sc3.metric("Score Composto", f"{r['Score']:.1f}")
+                sc4.metric("Score Gemini (ref.)", r.get("Score Gemini Original", "—"), help="Score original do modelo, apenas referência")
 
             st.divider()
             st.markdown(f"**Justificativa:** {r['Justificativa']}")

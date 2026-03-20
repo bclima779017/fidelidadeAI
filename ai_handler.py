@@ -1,7 +1,9 @@
 import json
 import re
 import time
+import numpy as np
 import google.generativeai as genai
+from scoring import calcular_score_pergunta
 
 _SYSTEM_INSTRUCTION = (
     "Você é um auditor RIGOROSO especializado em GEO (Generative Engine Optimization) e "
@@ -44,6 +46,45 @@ def _get_model(api_key: str) -> genai.GenerativeModel:
         )
         _cached_api_key = api_key
     return _cached_model
+
+
+def _compute_semantic_similarity(text_a: str, text_b: str) -> float:
+    """Calcula similaridade semântica entre dois textos via embeddings Gemini.
+
+    Returns:
+        Percentual de match (0-100).
+    """
+    if not text_a.strip() or not text_b.strip():
+        return 0.0
+
+    result = genai.embed_content(
+        model="models/gemini-embedding-001",
+        content=[text_a, text_b],
+    )
+    emb_a = np.array(result["embedding"][0], dtype=np.float32)
+    emb_b = np.array(result["embedding"][1], dtype=np.float32)
+
+    dot = np.dot(emb_a, emb_b)
+    norm_a = np.linalg.norm(emb_a)
+    norm_b = np.linalg.norm(emb_b)
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+
+    similarity = float(dot / (norm_a * norm_b))
+    # Cosseno vai de -1 a 1; clampamos em [0, 1] e convertemos para 0-100
+    return max(0.0, min(similarity, 1.0)) * 100
+
+
+def _compute_claims_rate(claims_preservados: list, claims_omitidos: list) -> float:
+    """Calcula a taxa de atingimento de claims.
+
+    Returns:
+        Percentual de claims atingidos (0-100).
+    """
+    total = len(claims_preservados) + len(claims_omitidos)
+    if total == 0:
+        return 100.0  # Se não há claims, considera 100%
+    return (len(claims_preservados) / total) * 100
 
 
 def build_prompt(context: str, question: str, official_answer: str, rag_mode: bool = False, health=None) -> str:
@@ -180,6 +221,26 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
             if used_fallback and health is not None:
                 health.json_parse_failures += 1
                 health.json_parse_details.append(question[:80])
+
+            # --- Novo scoring composto ---
+            resposta_ia = result.get("resposta_ia", "")
+            claims_pres = result.get("claims_preservados", [])
+            claims_omit = result.get("claims_omitidos", [])
+
+            if resposta_ia and result.get("score", -1) >= 0:
+                try:
+                    match_semantico = _compute_semantic_similarity(official_answer, resposta_ia)
+                except Exception:
+                    match_semantico = 0.0
+
+                taxa_claims = _compute_claims_rate(claims_pres, claims_omit)
+                score_composto = calcular_score_pergunta(match_semantico, taxa_claims)
+
+                result["score_gemini_original"] = result.get("score", -1)
+                result["match_semantico"] = round(match_semantico, 1)
+                result["taxa_claims"] = round(taxa_claims, 1)
+                result["score"] = round(score_composto, 1)
+
             if sources:
                 result["fontes"] = sources
             return result
