@@ -3,15 +3,7 @@ import ai_handler
 import report_handler
 import scraper
 import sitemap
-
-
-PERGUNTAS = [
-    "Qual é a proposta de valor da marca?",
-    "Quais são os principais diferenciais competitivos?",
-    "Qual é o público-alvo da marca?",
-    "Qual problema a marca resolve para seus clientes?",
-    "Quais são os principais produtos e/ou serviços?",
-]
+from scoring import PERGUNTAS, calcular_score_ponderado
 
 
 def run_audit():
@@ -159,20 +151,21 @@ def run_audit():
             "total_chunks": stats["total_chunks"],
             "chunks_per_page": stats["chunks_per_page"],
         }
-    filepath = report_handler.generate_report(results, rag_metadata=rag_metadata)
-    print(f"Relatório salvo em: {filepath}\n")
-
     # Resumo final
     scores = [r["Score"] for r in results if r["Score"] >= 0]
     errors = [r for r in results if r["Score"] == -1]
+    score_ponderado = calcular_score_ponderado(results) if scores else None
+
+    filepath = report_handler.generate_report(results, rag_metadata=rag_metadata, score_ponderado=score_ponderado)
+    print(f"Relatório salvo em: {filepath}\n")
 
     print("=" * 60)
     print("  AUDITORIA GEO CONCLUÍDA")
     print("=" * 60)
     if scores:
-        avg = sum(scores) / len(scores)
+        score_ponderado = calcular_score_ponderado(results)
         print(f"  Total de perguntas:  {len(results)}")
-        print(f"  Score médio:         {avg:.1f}")
+        print(f"  Score ponderado:     {score_ponderado:.1f}")
         print(f"  Score mínimo:        {min(scores)}")
         print(f"  Score máximo:        {max(scores)}")
     if errors:

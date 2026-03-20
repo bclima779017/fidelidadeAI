@@ -6,14 +6,7 @@ import scraper
 import sitemap
 import config
 import time
-
-PERGUNTAS = [
-    "Qual é a proposta de valor da marca?",
-    "Quais são os principais diferenciais competitivos?",
-    "Qual é o público-alvo da marca?",
-    "Qual problema a marca resolve para seus clientes?",
-    "Quais são os principais produtos e/ou serviços?",
-]
+from scoring import PERGUNTAS, calcular_score_ponderado
 
 st.set_page_config(
     page_title="Auditoria GEO — Kípiai",
@@ -271,9 +264,10 @@ if st.session_state.get("results"):
 
     # Score cards
     scores = [r["Score"] for r in results if r["Score"] >= 0]
+    score_ponderado = calcular_score_ponderado(results) if scores else None
     if scores:
         col1, col2, col3 = st.columns(3)
-        col1.metric("Score Médio", f"{sum(scores) / len(scores):.1f}")
+        col1.metric("Score Final Ponderado", f"{score_ponderado:.1f}")
         col2.metric("Score Mínimo", min(scores))
         col3.metric("Score Máximo", max(scores))
 
@@ -318,7 +312,7 @@ if st.session_state.get("results"):
         }
 
     # Download Excel
-    filepath = report_handler.generate_report(results, rag_metadata=rag_metadata)
+    filepath = report_handler.generate_report(results, rag_metadata=rag_metadata, score_ponderado=score_ponderado)
     with open(filepath, "rb") as f:
         st.download_button(
             label="Download Relatório Excel",

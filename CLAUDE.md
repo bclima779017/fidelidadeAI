@@ -14,6 +14,7 @@ config.py            → Carrega variáveis de ambiente (.env)
 scraper.py           → Extração de texto visível (página única + multi-página)
 sitemap.py           → Descoberta de URLs via sitemap.xml ou crawling de links
 rag.py               → Pipeline RAG: chunking + embedding + retrieval semântico
+scoring.py           → Perguntas, pesos e cálculo do score final ponderado
 ai_handler.py        → Prompt de auditoria + chamada Gemini 2.0 Flash (temp=0)
 report_handler.py    → Geração de relatório .xlsx com formatação condicional + aba RAG
 ```

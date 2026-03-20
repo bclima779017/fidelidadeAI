@@ -8,12 +8,13 @@ from openpyxl.utils import get_column_letter
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
 
 
-def generate_report(results: list[dict], rag_metadata: dict | None = None) -> str:
+def generate_report(results: list[dict], rag_metadata: dict | None = None, score_ponderado: float | None = None) -> str:
     """Gera o relatório .xlsx com formatação condicional e retorna o caminho do arquivo.
 
     Args:
         results: Lista de dicts com os resultados da auditoria.
         rag_metadata: Metadados RAG opcionais {total_pages, total_chunks, chunks_per_page}.
+        score_ponderado: Score final ponderado já calculado via scoring.calcular_score_ponderado().
     """
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -111,8 +112,9 @@ def generate_report(results: list[dict], rag_metadata: dict | None = None) -> st
         ws.cell(row=summary_row, column=1).value = "RESUMO DA AUDITORIA"
         ws.cell(row=summary_row, column=1).font = Font(bold=True, size=12, color="1F4E79")
 
+        score_final_label = f"{score_ponderado:.1f}" if score_ponderado is not None else f"{avg_score:.1f}"
         metrics = [
-            (summary_row + 1, "Score Médio", f"{avg_score:.1f}"),
+            (summary_row + 1, "Score Final Ponderado", score_final_label),
             (summary_row + 2, "Score Mínimo", f"{min_score} (Pergunta {min_idx})"),
             (summary_row + 3, "Score Máximo", f"{max_score} (Pergunta {max_idx})"),
             (summary_row + 4, "Total de Perguntas", str(len(df))),
