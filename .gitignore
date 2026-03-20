@@ -3,6 +3,7 @@ output/
 __pycache__/
 *.pyc
 *.json
+!knowledge/knowledge_base.json
 !.env.example
 venv/
 credentials/

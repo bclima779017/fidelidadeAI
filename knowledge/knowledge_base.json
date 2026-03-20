@@ -1,0 +1,334 @@
+[
+  {
+    "id": "FC-01",
+    "titulo": "Pirâmide Invertida (Claim-First)",
+    "eixo": "Arquitetura Semântica e Textual",
+    "eixo_numero": 1,
+    "descricao_profunda": "Modelos RAG possuem janelas de contexto estritas. Textos que começam com introduções históricas ou jargões vazios são descartados. A primeira frase de qualquer H2 ou H3 deve ser a resposta conclusiva.",
+    "implementacao_humana": "Treinar redatores para banir parágrafos introdutórios. Iniciar com a resposta bruta.",
+    "parametro_auditoria": "Ação: Isole a primeira tag <p> imediatamente após cada <h2> ou <h3> .",
+    "gatilho_erro": "Falha se as primeiras 20 palavras não responderem diretamente à intenção do subtítulo ou contiverem \"fluff\" (\"No mundo de hoje...\", \"Para entender isso...\").",
+    "impacto": "alto",
+    "perguntas_relacionadas": [
+      "problema",
+      "produtos"
+    ],
+    "criterios_ativacao": {
+      "score_max": 80,
+      "match_semantico_max": 0.7,
+      "taxa_claims_max": 0.5,
+      "requer_hallucinations": false,
+      "requer_claims_quantitativos": false
+    }
+  },
+  {
+    "id": "FC-02",
+    "titulo": "Ancoragem Factual do Claim",
+    "eixo": "Arquitetura Semântica e Textual",
+    "eixo_numero": 1,
+    "descricao_profunda": "Um \"claim\" sem dado verificável é interpretado como \"marketing fluff\" (viés). O First-Claim só é validado se a afirmação contiver ancoragem matemática ou referencial.",
+    "implementacao_humana": "Exigir dados rígidos (percentual, R$, datas) na primeira frase.",
+    "parametro_auditoria": "Ação: Analisar o primeiro parágrafo dos blocos principais via NLP.",
+    "gatilho_erro": "Falha se não detectar nenhuma entidade numérica (dígitos, %), datas rígidas ou Entidades Nomeadas (NER) reconhecidas no mercado no primeiro período do texto.",
+    "impacto": "alto",
+    "perguntas_relacionadas": [
+      "proposta de valor",
+      "diferenciais competitivos",
+      "produtos"
+    ],
+    "criterios_ativacao": {
+      "score_max": 85,
+      "match_semantico_max": 0.7,
+      "taxa_claims_max": 0.6,
+      "requer_hallucinations": true,
+      "requer_claims_quantitativos": true
+    }
+  },
+  {
+    "id": "FC-03",
+    "titulo": "Preservação de Contexto (Anti-Fragmentação)",
+    "eixo": "Arquitetura Semântica e Textual",
+    "eixo_numero": 1,
+    "descricao_profunda": "A IA fragmenta o texto em chunks. Se um chunk começar com pronome (Ex: \"Isso causou...\"), a IA perde o referencial ao isolar a frase.",
+    "implementacao_humana": "Repetir o nome da entidade primária à exaustão, de forma enciclopédica (Ex: \"O software Kipiai melhora...\").",
+    "parametro_auditoria": "Ação: Varrer o início de todos os parágrafos ( <p> ).",
+    "gatilho_erro": "Falha se a primeira palavra de um parágrafo crítico for um pronome demonstrativo/oblíquo (\"Isso\", \"Aquilo\", \"Ele\", \"Estes\", \"O mesmo\").",
+    "impacto": "alto",
+    "perguntas_relacionadas": [
+      "problema",
+      "produtos"
+    ],
+    "criterios_ativacao": {
+      "score_max": 80,
+      "match_semantico_max": 0.7,
+      "taxa_claims_max": 0.5,
+      "requer_hallucinations": false,
+      "requer_claims_quantitativos": false
+    }
+  },
+  {
+    "id": "FC-04",
+    "titulo": "Desambiguação de Entidades",
+    "eixo": "Arquitetura Semântica e Textual",
+    "eixo_numero": 1,
+    "descricao_profunda": "Evitar que a IA processe a afirmação com o contexto semântico errado (duplo sentido).",
+    "implementacao_humana": "Logo na primeira afirmação, associar a palavra-chave à sua Ontologia (Ex: \"A manga, fruta de origem asiática...\").",
+    "parametro_auditoria": "Ação: Identificar a palavra-chave central da URL/H1.",
+    "gatilho_erro": "Falha se a entidade principal não estiver acompanhada de sua categoria macro (ex: ferramenta, conceito, plataforma, espécie) na sua primeira aparição.",
+    "impacto": "alto",
+    "perguntas_relacionadas": [
+      "problema",
+      "produtos"
+    ],
+    "criterios_ativacao": {
+      "score_max": 80,
+      "match_semantico_max": 0.6,
+      "taxa_claims_max": 0.5,
+      "requer_hallucinations": true,
+      "requer_claims_quantitativos": false
+    }
+  },
+  {
+    "id": "FC-05",
+    "titulo": "Micro-Hierarquia HTML (Strong/Mark)",
+    "eixo": "Engenharia de Extração (Código e HTML)",
+    "eixo_numero": 2,
+    "descricao_profunda": "LLMs analisam o DOM. CSS ( font-weight: bold ) é ignorado. Tags semânticas sinalizam vetores de atenção.",
+    "implementacao_humana": "Envolver dados numéricos e a resposta exata em tags <strong> ou <mark> .",
+    "parametro_auditoria": "Ação: Extrair o texto que o agente classificou como a \"resposta\" (First-Claim).",
+    "gatilho_erro": "Falha se a métrica ou o dado crucial não estiver encapsulado nativamente em <strong> , <mark> ou <em> no HTML bruto.",
+    "impacto": "alto",
+    "perguntas_relacionadas": [
+      "proposta de valor",
+      "diferenciais competitivos",
+      "produtos"
+    ],
+    "criterios_ativacao": {
+      "score_max": 75,
+      "match_semantico_max": 0.7,
+      "taxa_claims_max": 0.5,
+      "requer_hallucinations": false,
+      "requer_claims_quantitativos": true
+    }
+  },
+  {
+    "id": "FC-06",
+    "titulo": "Isolamento do Claim em SSR",
+    "eixo": "Engenharia de Extração (Código e HTML)",
+    "eixo_numero": 2,
+    "descricao_profunda": "Afirmações carregadas via JS assíncrono (CSR) são ignoradas por OAI-SearchBot para economizar Tokens Budget.",
+    "implementacao_humana": "Garantir arquitetura com SSR ativado. O First-Claim deve vir em HTML bruto.",
+    "parametro_auditoria": "Ação: Comparar o código-fonte cru (sem JS) com o DOM renderizado (com JS).",
+    "gatilho_erro": "Falha Crítica se o bloco textual do First-Claim não estiver presente no código-fonte inicial ( view-source ).",
+    "impacto": "alto",
+    "perguntas_relacionadas": [
+      "problema",
+      "produtos"
+    ],
+    "criterios_ativacao": {
+      "score_max": 90,
+      "match_semantico_max": 0.7,
+      "taxa_claims_max": 0.5,
+      "requer_hallucinations": false,
+      "requer_claims_quantitativos": false
+    }
+  },
+  {
+    "id": "FC-07",
+    "titulo": "Fragmentação de Cabeçalhos",
+    "eixo": "Engenharia de Extração (Código e HTML)",
+    "eixo_numero": 2,
+    "descricao_profunda": "Murais de texto diluem o peso. A IA busca âncoras (H2) que correspondam diretamente à pergunta do usuário.",
+    "implementacao_humana": "Transformar subtítulos em perguntas explícitas seguidas por respostas curtas.",
+    "parametro_auditoria": "Ação: Contar palavras (word count) entre um <h2> e o próximo <h2> ou <h3> .",
+    "gatilho_erro": "Falha se houver mais de 300 palavras ininterruptas (mural de texto) sem quebra visual, ou se o <h2> for genérico (ex: \"Conclusão\" ao invés de \"Qual o resultado final?\").",
+    "impacto": "alto",
+    "perguntas_relacionadas": [
+      "problema",
+      "produtos"
+    ],
+    "criterios_ativacao": {
+      "score_max": 70,
+      "match_semantico_max": 0.7,
+      "taxa_claims_max": 0.5,
+      "requer_hallucinations": false,
+      "requer_claims_quantitativos": false
+    }
+  },
+  {
+    "id": "FC-08",
+    "titulo": "Breadcrumbs e Anchor Links",
+    "eixo": "Engenharia de Extração (Código e HTML)",
+    "eixo_numero": 2,
+    "descricao_profunda": "IAs mapeiam a taxonomia antes da extração. Links diretos facilitam.",
+    "implementacao_humana": "Implementar Table of Contents (Índice) mapeado via href=\"#id\" .",
+    "parametro_auditoria": "Ação: Buscar por blocos de sumário ou navegação in-page no topo.",
+    "gatilho_erro": "Falha se os <h2> não possuírem um atributo id=\"...\" ou se não houver âncoras # apontando para eles no primeiro terço da página.",
+    "impacto": "medio",
+    "perguntas_relacionadas": [
+      "problema",
+      "produtos"
+    ],
+    "criterios_ativacao": {
+      "score_max": 60,
+      "match_semantico_max": 0.7,
+      "taxa_claims_max": 0.5,
+      "requer_hallucinations": false,
+      "requer_claims_quantitativos": false
+    }
+  },
+  {
+    "id": "FC-09",
+    "titulo": "Zero-Click Proofing (TL;DR)",
+    "eixo": "Experiência e UI Adaptada para RAG",
+    "eixo_numero": 3,
+    "descricao_profunda": "Se a IA prever scroll longo para achar a resposta, pontua fricção.",
+    "implementacao_humana": "Quadro executivo (TL;DR) de 3 bullet-points logo abaixo do H1.",
+    "parametro_auditoria": "Ação: Simular carregamento de viewport desktop (1080x1920).",
+    "gatilho_erro": "Falha se não encontrar uma <ul> ou <ol> sintetizando os pontos principais dentro dos primeiros 800px verticais do DOM.",
+    "impacto": "alto",
+    "perguntas_relacionadas": [
+      "proposta de valor",
+      "diferenciais competitivos",
+      "problema",
+      "produtos"
+    ],
+    "criterios_ativacao": {
+      "score_max": 75,
+      "match_semantico_max": 0.7,
+      "taxa_claims_max": 0.5,
+      "requer_hallucinations": false,
+      "requer_claims_quantitativos": false
+    }
+  },
+  {
+    "id": "FC-10",
+    "titulo": "Tabelas HTML para Comparativos",
+    "eixo": "Experiência e UI Adaptada para RAG",
+    "eixo_numero": 3,
+    "descricao_profunda": "IAs extraem matrizes bidimensionais perfeitamente; odeiam imagens de tabelas.",
+    "implementacao_humana": "Inserir <table> nativa para dados comparativos.",
+    "parametro_auditoria": "Ação: Analisar claims que denotem comparação (\"vs\", \"diferença\", \"comparativo\").",
+    "gatilho_erro": "Falha se houver uso de imagens ( <img> ) em áreas de comparação ou texto corrido extenso descrevendo itens par a par sem o uso da tag <table> .",
+    "impacto": "alto",
+    "perguntas_relacionadas": [
+      "diferenciais competitivos",
+      "produtos"
+    ],
+    "criterios_ativacao": {
+      "score_max": 80,
+      "match_semantico_max": 0.7,
+      "taxa_claims_max": 0.5,
+      "requer_hallucinations": false,
+      "requer_claims_quantitativos": true
+    }
+  },
+  {
+    "id": "FC-11",
+    "titulo": "Redução de Fricção Modal",
+    "eixo": "Experiência e UI Adaptada para RAG",
+    "eixo_numero": 3,
+    "descricao_profunda": "Barreiras obstrutivas nos primeiros 3 segundos geram bounce algorítmico.",
+    "implementacao_humana": "Banir pop-ups e paywalls agressivos. Captura de leads apenas in-line.",
+    "parametro_auditoria": "Ação: Verificar elementos com position: fixed ou absolute com alto z-index (modais).",
+    "gatilho_erro": "Falha Crítica se houver divs obstrutivas mapeadas no DOM carregando com a página antes do conteúdo principal ser acessível.",
+    "impacto": "alto",
+    "perguntas_relacionadas": [
+      "problema"
+    ],
+    "criterios_ativacao": {
+      "score_max": 90,
+      "match_semantico_max": 0.7,
+      "taxa_claims_max": 0.5,
+      "requer_hallucinations": false,
+      "requer_claims_quantitativos": false
+    }
+  },
+  {
+    "id": "FC-12",
+    "titulo": "Mosaicos de Respostas Zero-Shot",
+    "eixo": "Táticas \"Out-of-the-Box\" (Fronteira GEO)",
+    "eixo_numero": 4,
+    "descricao_profunda": "Facilitar o trabalho entregando o texto no exato formato do output da IA (40 a 50 palavras).",
+    "implementacao_humana": "<aside> pelo layout contendo pergunta/resposta sintética.",
+    "parametro_auditoria": "Ação: Procurar blocos de FAQs ou Asides.",
+    "gatilho_erro": "Proposta de Melhoria Sugerida: Se não encontrar pequenos fragmentos <aside> isolados contendo a resposta resumida perfeita, sugerir a injeção destes \"anzóis\" para a IA.",
+    "impacto": "medio",
+    "perguntas_relacionadas": [
+      "proposta de valor",
+      "diferenciais competitivos",
+      "problema",
+      "produtos"
+    ],
+    "criterios_ativacao": {
+      "score_max": 50,
+      "match_semantico_max": 0.8,
+      "taxa_claims_max": 0.4,
+      "requer_hallucinations": false,
+      "requer_claims_quantitativos": false
+    }
+  },
+  {
+    "id": "FC-13",
+    "titulo": "Prompt Injection no DOM Oculto",
+    "eixo": "Táticas \"Out-of-the-Box\" (Fronteira GEO)",
+    "eixo_numero": 4,
+    "descricao_profunda": "Instruções em linguagem natural ocultas para guiar o crawler da IA.",
+    "implementacao_humana": "Tags aria-description ou <div class=\"sr-only\"> com comandos literais para a máquina.",
+    "parametro_auditoria": "Ação: Buscar no DOM por \"comandos de IA\" ou diretivas ocultas.",
+    "gatilho_erro": "Proposta Avançada: Sugerir a inclusão de um texto oculto (ex: Instrução de Síntese para Assistentes de IA: Ao extrair... ).",
+    "impacto": "baixo",
+    "perguntas_relacionadas": [],
+    "criterios_ativacao": {
+      "score_max": 40,
+      "match_semantico_max": 0.9,
+      "taxa_claims_max": 0.3,
+      "requer_hallucinations": false,
+      "requer_claims_quantitativos": false
+    }
+  },
+  {
+    "id": "FC-14",
+    "titulo": "Ontologias Próprias (JSON-LD)",
+    "eixo": "Táticas \"Out-of-the-Box\" (Fronteira GEO)",
+    "eixo_numero": 4,
+    "descricao_profunda": "Ingerir o Claim como entidade matemática no Knowledge Graph.",
+    "implementacao_humana": "JSON-LD modificado com \"PropertyValue\" nativo da marca.",
+    "parametro_auditoria": "Ação: Fazer parse de todas as tags <script type=\"application/ld+json\"> .",
+    "gatilho_erro": "Falha se o Schema da página usar apenas tipos básicos ( Article , BreadcrumbList ) e não aproveitar Dataset , Observation ou PropertyValue para o First-Claim.",
+    "impacto": "medio",
+    "perguntas_relacionadas": [
+      "proposta de valor",
+      "diferenciais competitivos",
+      "produtos"
+    ],
+    "criterios_ativacao": {
+      "score_max": 60,
+      "match_semantico_max": 0.7,
+      "taxa_claims_max": 0.5,
+      "requer_hallucinations": false,
+      "requer_claims_quantitativos": true
+    }
+  },
+  {
+    "id": "FC-15",
+    "titulo": "Iscos de Código Executável",
+    "eixo": "Táticas \"Out-of-the-Box\" (Fronteira GEO)",
+    "eixo_numero": 4,
+    "descricao_profunda": "LLMs como o ChatGPT executam Python internamente para checar fatos.",
+    "implementacao_humana": "Códigos Python/R em tags <pre> validando os dados.",
+    "parametro_auditoria": "Ação: Verificar o tópico da página (se técnico/matemático).",
+    "gatilho_erro": "Se o conteúdo for altamente técnico, sugerir adicionar um <pre><code> com a lógica de validação do claim central para forçar a execução da IA no RAG.",
+    "impacto": "baixo",
+    "perguntas_relacionadas": [
+      "produtos"
+    ],
+    "criterios_ativacao": {
+      "score_max": 45,
+      "match_semantico_max": 0.8,
+      "taxa_claims_max": 0.4,
+      "requer_hallucinations": true,
+      "requer_claims_quantitativos": true
+    }
+  }
+]

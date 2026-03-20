@@ -10,6 +10,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from scoring import PERGUNTAS, PLACEHOLDERS, calcular_score_ponderado
 from health import EvalHealth
+import suggestions
 
 def _render_health_panel(health: EvalHealth):
     """Renderiza o painel de Saúde da Avaliação."""
@@ -550,6 +551,62 @@ if st.session_state.get("results"):
                 for fonte in r["Fontes Consultadas"].split("\n"):
                     st.markdown(f"- `{fonte}`")
 
+    # --- Seção 5: Sugestões de Melhoria ---
+    suggestions_map = {}
+    if suggestions.is_available():
+        suggestions_map = suggestions.match_suggestions(results)
+
+    if suggestions_map:
+        st.header("5. Sugestões de Melhoria — Protocolo First Claim")
+        st.markdown("Iniciativas recomendadas com base nos resultados da auditoria e no estudo de First-Claim da Kípiai.")
+
+        for pergunta, sugs in suggestions_map.items():
+            # Encontra o score da pergunta
+            pergunta_score = next((r["Score"] for r in results if r["Pergunta"] == pergunta), -1)
+            if pergunta_score >= 70:
+                p_emoji = "🟢"
+            elif pergunta_score >= 50:
+                p_emoji = "🟡"
+            else:
+                p_emoji = "🔴"
+
+            with st.expander(f"{p_emoji} {pergunta} — Score: {pergunta_score:.1f}", expanded=(pergunta_score < 70)):
+                for sug in sugs:
+                    imp = sug["impacto"]
+                    imp_color = {"alto": "🔴", "medio": "🟡", "baixo": "🟢"}.get(imp, "⚪")
+
+                    st.markdown(f"**{imp_color} {sug['titulo']}** — Eixo {sug['eixo_numero']}: {sug['eixo']}")
+
+                    col_rel, col_imp = st.columns([1, 1])
+                    col_rel.metric("Relevância", f"{sug['relevancia']:.0f}%")
+                    col_imp.metric("Impacto", imp.capitalize())
+
+                    st.markdown(f"**O que fazer:** {sug['implementacao']}")
+                    with st.popover("Ver descrição completa"):
+                        st.markdown(sug["descricao"])
+
+                    # Contextualização via Gemini (sob demanda)
+                    pergunta_results = next((r for r in results if r["Pergunta"] == pergunta), {})
+                    claims_omit = pergunta_results.get("Claims Omitidos", []) or []
+
+                    if claims_omit and api_key:
+                        btn_key = f"ctx_{sug['id']}_{hash(pergunta) % 10000}"
+                        if st.button(f"Contextualizar para esta marca", key=btn_key):
+                            with st.spinner("Adaptando sugestão para a marca..."):
+                                ctx = suggestions.contextualize_suggestion(
+                                    suggestion=sug,
+                                    claims_omitidos=claims_omit,
+                                    contexto_resumo=st.session_state.contexto[:3000],
+                                    api_key=api_key,
+                                )
+                            st.markdown(f"**Sugestão adaptada:** {ctx.get('sugestao_contextualizada', '')}")
+                            if ctx.get("exemplo_antes"):
+                                st.markdown(f"**Antes:** {ctx['exemplo_antes']}")
+                            if ctx.get("exemplo_depois"):
+                                st.markdown(f"**Depois:** {ctx['exemplo_depois']}")
+
+                    st.divider()
+
     # Preparar metadados RAG para o relatório
     rag_metadata = None
     if st.session_state.get("rag") is not None and st.session_state.rag.is_ready:
@@ -561,7 +618,10 @@ if st.session_state.get("results"):
         }
 
     # Download Excel
-    filepath = report_handler.generate_report(results, rag_metadata=rag_metadata, score_ponderado=score_ponderado)
+    filepath = report_handler.generate_report(
+        results, rag_metadata=rag_metadata, score_ponderado=score_ponderado,
+        suggestions_data=suggestions_map if suggestions_map else None,
+    )
     with open(filepath, "rb") as f:
         st.download_button(
             label="Download Relatório Excel",
