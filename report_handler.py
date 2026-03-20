@@ -8,20 +8,26 @@ from openpyxl.utils import get_column_letter
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
 
 
-def generate_report(results: list[dict]) -> str:
-    """Gera o relatório .xlsx com formatação condicional e retorna o caminho do arquivo."""
+def generate_report(results: list[dict], rag_metadata: dict | None = None) -> str:
+    """Gera o relatório .xlsx com formatação condicional e retorna o caminho do arquivo.
+
+    Args:
+        results: Lista de dicts com os resultados da auditoria.
+        rag_metadata: Metadados RAG opcionais {total_pages, total_chunks, chunks_per_page}.
+    """
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     filepath = os.path.join(OUTPUT_DIR, f"auditoria_{timestamp}.xlsx")
 
-    df = pd.DataFrame(results, columns=[
-        "Pergunta",
-        "Resposta Oficial",
-        "Resposta IA",
-        "Score",
-        "Justificativa",
-    ])
+    # Detecta se há coluna de fontes
+    has_sources = any("Fontes Consultadas" in r for r in results)
+
+    columns = ["Pergunta", "Resposta Oficial", "Resposta IA", "Score", "Justificativa"]
+    if has_sources:
+        columns.append("Fontes Consultadas")
+
+    df = pd.DataFrame(results, columns=columns)
 
     avg_score = df["Score"].mean()
     min_score = df["Score"].min()
@@ -29,12 +35,15 @@ def generate_report(results: list[dict]) -> str:
     min_idx = df["Score"].idxmin() + 1
     max_idx = df["Score"].idxmax() + 1
 
+    num_cols = len(columns)
+
     with pd.ExcelWriter(filepath, engine="openpyxl") as writer:
         df.to_excel(writer, sheet_name="Resultados", index=False, startrow=1)
         ws = writer.sheets["Resultados"]
 
         # Título
-        ws.merge_cells("A1:E1")
+        end_col = get_column_letter(num_cols)
+        ws.merge_cells(f"A1:{end_col}1")
         title_cell = ws["A1"]
         title_cell.value = f"Auditoria GEO — Kípiai — {datetime.now().strftime('%d/%m/%Y %H:%M')}"
         title_cell.font = Font(bold=True, size=14, color="1F4E79")
@@ -43,7 +52,7 @@ def generate_report(results: list[dict]) -> str:
         # Estilo do header
         header_fill = PatternFill(start_color="1F4E79", end_color="1F4E79", fill_type="solid")
         header_font = Font(bold=True, color="FFFFFF", size=11)
-        for col in range(1, 6):
+        for col in range(1, num_cols + 1):
             cell = ws.cell(row=2, column=col)
             cell.fill = header_fill
             cell.font = header_font
@@ -78,6 +87,8 @@ def generate_report(results: list[dict]) -> str:
 
         # Larguras de coluna
         col_widths = {"A": 40, "B": 45, "C": 45, "D": 10, "E": 50}
+        if has_sources:
+            col_widths["F"] = 50
         for col_letter, width in col_widths.items():
             ws.column_dimensions[col_letter].width = width
 
@@ -88,7 +99,7 @@ def generate_report(results: list[dict]) -> str:
             top=Side(style="thin"),
             bottom=Side(style="thin"),
         )
-        for row in ws.iter_rows(min_row=2, max_row=2 + len(df), min_col=1, max_col=5):
+        for row in ws.iter_rows(min_row=2, max_row=2 + len(df), min_col=1, max_col=num_cols):
             for cell in row:
                 cell.border = thin_border
                 if cell.column != 4:
@@ -107,9 +118,52 @@ def generate_report(results: list[dict]) -> str:
             (summary_row + 4, "Total de Perguntas", str(len(df))),
             (summary_row + 5, "Erros (score = -1)", str(len(df[df["Score"] == -1]))),
         ]
+
+        if rag_metadata:
+            metrics.append((summary_row + 6, "Modo", "RAG Multi-Página"))
+            metrics.append((summary_row + 7, "Páginas Indexadas", str(rag_metadata.get("total_pages", 0))))
+            metrics.append((summary_row + 8, "Chunks Indexados", str(rag_metadata.get("total_chunks", 0))))
+
         for row_num, label, value in metrics:
             ws.cell(row=row_num, column=1).value = label
             ws.cell(row=row_num, column=1).font = Font(bold=True)
             ws.cell(row=row_num, column=2).value = value
+
+        # --- Aba de Metadados RAG ---
+        if rag_metadata and rag_metadata.get("chunks_per_page"):
+            rag_data = []
+            for page_url, chunk_count in rag_metadata["chunks_per_page"].items():
+                rag_data.append({"URL da Página": page_url, "Chunks": chunk_count})
+
+            df_rag = pd.DataFrame(rag_data)
+            df_rag.to_excel(writer, sheet_name="Metadados RAG", index=False, startrow=1)
+            ws_rag = writer.sheets["Metadados RAG"]
+
+            # Título
+            ws_rag.merge_cells("A1:B1")
+            title_cell = ws_rag["A1"]
+            title_cell.value = "Metadados RAG — Páginas Crawleadas"
+            title_cell.font = Font(bold=True, size=14, color="1F4E79")
+            title_cell.alignment = Alignment(horizontal="center", vertical="center")
+
+            # Header
+            for col in range(1, 3):
+                cell = ws_rag.cell(row=2, column=col)
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal="center")
+
+            ws_rag.column_dimensions["A"].width = 70
+            ws_rag.column_dimensions["B"].width = 15
+
+            # Resumo no final
+            summary_rag_row = 3 + len(df_rag) + 1
+            ws_rag.cell(row=summary_rag_row, column=1).value = "Total de Páginas"
+            ws_rag.cell(row=summary_rag_row, column=1).font = Font(bold=True)
+            ws_rag.cell(row=summary_rag_row, column=2).value = rag_metadata.get("total_pages", 0)
+
+            ws_rag.cell(row=summary_rag_row + 1, column=1).value = "Total de Chunks"
+            ws_rag.cell(row=summary_rag_row + 1, column=1).font = Font(bold=True)
+            ws_rag.cell(row=summary_rag_row + 1, column=2).value = rag_metadata.get("total_chunks", 0)
 
     return filepath

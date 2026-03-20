@@ -11,18 +11,31 @@ e a IA compara as respostas extraídas do site com as do especialista, gerando u
 app.py               → Interface web Streamlit (entrada/saída principal)
 main.py              → CLI alternativo (loop de auditoria via terminal)
 config.py            → Carrega variáveis de ambiente (.env)
-scraper.py           → Extração de texto visível de sites (requests + BeautifulSoup)
-ai_handler.py        → Prompt de auditoria + chamada Gemini 1.5 Pro (temp=0)
-report_handler.py    → Geração de relatório .xlsx com formatação condicional
+scraper.py           → Extração de texto visível (página única + multi-página)
+sitemap.py           → Descoberta de URLs via sitemap.xml ou crawling de links
+rag.py               → Pipeline RAG: chunking + embedding + retrieval semântico
+ai_handler.py        → Prompt de auditoria + chamada Gemini 2.0 Flash (temp=0)
+report_handler.py    → Geração de relatório .xlsx com formatação condicional + aba RAG
 ```
 
 ## Fluxo de Execução (Streamlit)
+
+### Modo Página Única (legado)
 1. Usuário informa URL do site → scraper extrai texto visível
 2. Usuário preenche respostas do especialista para 5 perguntas fixas
 3. Para cada pergunta, envia prompt de auditoria ao Gemini
 4. IA retorna JSON com `resposta_ia`, `score` (0-100), `justificativa`
 5. Resultados exibidos na interface com score cards e tabela
 6. Download de relatório Excel (.xlsx)
+
+### Modo Site Completo (RAG)
+1. Usuário informa URL → sitemap.py descobre páginas (sitemap.xml ou links)
+2. Usuário seleciona páginas em tabela com checkboxes
+3. scraper.py extrai conteúdo de cada página (com título/URL)
+4. rag.py chunka (~500 tokens) e embeda via Gemini text-embedding-004
+5. Para cada pergunta: retrieval híbrido (keyword + semântico) → top-10 chunks
+6. ai_handler.py envia contexto focado ao Gemini com atribuição de fonte
+7. Resultados com source attribution + relatório Excel com aba de metadados RAG
 
 ## 5 Perguntas Fixas
 1. Qual é a proposta de valor da marca?
@@ -50,12 +63,21 @@ report_handler.py    → Geração de relatório .xlsx com formatação condicio
 - Executar CLI: `python main.py`
 
 ## Modelo de IA
-- **Gemini 1.5 Pro** com `temperature=0`, `top_p=1.0`, `top_k=1`
+- **Gemini 2.0 Flash** com `temperature=0`, `top_p=1.0`, `top_k=1`
+- **Gemini text-embedding-004** para embeddings no pipeline RAG
 - Prompt retorna JSON estruturado, com fallback de parsing via regex
+
+## Pipeline RAG
+- **Chunking**: ~500 tokens (~2000 chars) com overlap de ~100 tokens, respeitando sentenças
+- **Embedding**: text-embedding-004 em batches de até 100 chunks
+- **Storage**: numpy arrays em memória (leve, efêmero por sessão)
+- **Retrieval**: Híbrido (keywords por pergunta + similaridade cosseno) com boost por tipo de página
+- **Deduplicação**: Chunks com cosseno > 0.92 removidos
+- **Orçamento**: ~10 chunks x ~500 tokens = ~5k tokens de contexto focado por pergunta
 
 ## Convenções
 - Linguagem do código: Python 3.10+
 - Comentários e prints em português (PT-BR)
 - Módulos independentes com responsabilidade única
 - Retries com backoff exponencial para API Gemini
-- Contexto truncado a 100k caracteres para respeitar limites do modelo
+- Contexto truncado a 100k caracteres para respeitar limites do modelo (modo legado)
