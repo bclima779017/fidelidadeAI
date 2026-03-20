@@ -1,5 +1,31 @@
 # Auditoria de Fidelidade RAG/GEO — Kípiai
 
+## Protocolo de Sessão
+
+### Ao iniciar uma nova sessão:
+1. **Ler `HISTORY.md`** para entender o contexto de construção, decisões anteriores e estado atual do projeto
+2. **Revisão rápida do código recente**: rodar `git log --oneline -10` e `git diff HEAD~3 --stat` para identificar mudanças recentes
+3. **Identificar possíveis otimizações** e reportar ao usuário antes de qualquer tarefa:
+   - Código duplicado entre módulos
+   - Imports não utilizados ou inconsistentes
+   - Padrões quebrados (ex: módulo sem docstring, função sem type hints onde outros têm)
+   - Oportunidades de performance (chamadas redundantes à API, cálculos repetidos)
+   - Problemas de segurança (chaves expostas, inputs não validados)
+4. **Apresentar resumo**: "Revisão concluída. X pontos de atenção encontrados." + lista curta com prioridade
+5. Aguardar confirmação do usuário antes de aplicar qualquer otimização sugerida
+
+### Ao encerrar uma sessão (quando o usuário solicitar com "registra histórico" ou similar):
+1. **Registrar em `HISTORY.md`** uma entrada concisa no TOPO do arquivo (cronológico reverso)
+2. Formato obrigatório:
+   ```
+   ## Sessão YYYY-MM-DD #N — Título curto do foco
+   **Foco:** Descrição de uma linha
+   - Bullet points das atividades principais (max 5-6 linhas)
+   - **Decisões:** escolhas de design/arquitetura tomadas nesta sessão
+   ```
+3. Não incluir detalhes de implementação (o código e commits são a fonte de verdade)
+4. Focar em **o quê** e **por quê**, não em **como**
+
 ## Visão Geral
 Aplicação web Streamlit para auditoria automatizada de fidelidade de respostas RAG/GEO.
 O usuário informa a URL de um site (contexto via scraping), preenche 5 respostas do especialista,
@@ -14,9 +40,14 @@ config.py            → Carrega variáveis de ambiente (.env)
 scraper.py           → Extração de texto visível (página única + multi-página)
 sitemap.py           → Descoberta de URLs via sitemap.xml ou crawling de links
 rag.py               → Pipeline RAG: chunking + embedding + retrieval semântico
-scoring.py           → Perguntas, pesos e cálculo do score final ponderado
+scoring.py           → Perguntas, pesos, scoring composto (semântico + claims)
 ai_handler.py        → Prompt de auditoria + chamada Gemini 2.5 Flash (temp=0)
-report_handler.py    → Geração de relatório .xlsx com formatação condicional + aba RAG
+health.py            → EvalHealth: 5 indicadores de qualidade da avaliação
+suggestions.py       → Motor de matching: resultados → sugestões First-Claim rankeadas
+ingest_knowledge.py  → Script offline: PDF → knowledge_base.json + embeddings.npz
+report_handler.py    → Relatório .xlsx (Resultados + Metadados RAG + Sugestões)
+knowledge/           → Base de conhecimento persistida (JSON + embeddings do Protocolo First-Claim)
+HISTORY.md           → Histórico de sessões de desenvolvimento (lido pelo Claude ao iniciar)
 ```
 
 ## Fluxo de Execução (Streamlit)
