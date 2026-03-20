@@ -1,13 +1,14 @@
 # Histórico de Implementação — Kípiai Audit
 
-## Sessão 2026-03-20 #3 — Sugestões First Claim + Protocolo de Sessão
-**Foco:** Módulo de sugestões baseado no Protocolo First Claim e governança de sessões
-- Criado `ingest_knowledge.py` — ingestão de PDF → JSON estruturado (15 iniciativas) + embeddings
-- Criado `suggestions.py` — motor de matching por critérios de ativação + relevância + impacto
-- Integrado seção 5 no `app.py` com sugestões rankeadas e contextualização Gemini sob demanda
-- Nova aba "Sugestões" no Excel (`report_handler.py`) com formatação condicional por impacto
-- Criado `HISTORY.md` e atualizado `CLAUDE.md` com protocolo de sessão (revisão + histórico)
-- **Decisões:** opção B para protótipo (usar scores existentes, sem auditoria de DOM/HTML)
+## Sessão 2026-03-20 #3 — UX, Scoring, Sugestões e Governança
+**Foco:** Propostas de UX, painel de saúde, scoring composto, módulo de sugestões First Claim e protocolo de sessão
+- Levantamento de 5 propostas de melhoria de UX/informação; usuário escolheu painel de saúde (4) para implementar
+- Criado `health.py` (EvalHealth, 5 indicadores) integrado em todo o pipeline com thread safety
+- Novo modelo de scoring composto: match semântico (peso 1) + taxa claims (peso 2) substituindo score subjetivo do Gemini
+- Planejamento e implementação do módulo de sugestões: `ingest_knowledge.py`, `suggestions.py`, seção 5 no app, aba Excel
+- Ingestão do "Protocolo First Claim.pdf" → 15 iniciativas estruturadas em `knowledge/` com embeddings pré-computados
+- Criado `HISTORY.md` e protocolo de sessão no `CLAUDE.md` (auto-revisão ao abrir + registro ao encerrar)
+- **Decisões:** opção B para sugestões (scores existentes, sem auditoria DOM); score Gemini mantido como referência; contextualização Gemini sob demanda (não automática)
 
 ## Sessão 2026-03-20 #2 — Scoring Composto + Painel de Saúde
 **Foco:** Novo modelo de scoring e indicadores de qualidade da avaliação
