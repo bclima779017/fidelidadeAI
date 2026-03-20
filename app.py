@@ -325,12 +325,13 @@ if avaliar:
     progress = st.progress(0, text="Avaliando perguntas em paralelo...")
 
     rag_instance = st.session_state.get("rag")
+    contexto_atual = st.session_state.contexto
     total = len(perguntas_preenchidas)
 
     def _evaluate(item):
         idx, pergunta, resposta_oficial = item
         return idx, pergunta, resposta_oficial, ai_handler.evaluate_question(
-            context=st.session_state.contexto,
+            context=contexto_atual,
             question=pergunta,
             official_answer=resposta_oficial,
             api_key=api_key,
