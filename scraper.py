@@ -1,5 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
+import security
 
 _HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -9,10 +10,18 @@ _HEADERS = {
 
 def extract_site_content(url: str) -> str:
     """Extrai texto visível de uma URL, removendo scripts, styles e navegação."""
-    response = requests.get(url, headers=_HEADERS, timeout=30)
+    url = security.validate_url(url)
+    response = requests.get(
+        url, headers=_HEADERS, timeout=30,
+        allow_redirects=True, stream=True,
+    )
     response.raise_for_status()
+    security.check_content_length(response.headers)
+    security.check_content_type_html(response.headers)
+    content = response.content[:security.MAX_RESPONSE_BYTES]
+    response.close()
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    soup = BeautifulSoup(content, "html.parser")
 
     # Remover elementos de ruído
     for tag in soup(["script", "style", "nav", "footer", "header", "noscript", "iframe", "svg"]):
@@ -31,10 +40,18 @@ def _extract_single_page(url: str) -> dict:
     Returns:
         Dict com {url, title, content, char_count}.
     """
-    response = requests.get(url, headers=_HEADERS, timeout=30)
+    url = security.validate_url(url)
+    response = requests.get(
+        url, headers=_HEADERS, timeout=30,
+        allow_redirects=True, stream=True,
+    )
     response.raise_for_status()
+    security.check_content_length(response.headers)
+    security.check_content_type_html(response.headers)
+    raw = response.content[:security.MAX_RESPONSE_BYTES]
+    response.close()
 
-    soup = BeautifulSoup(response.text, "html.parser")
+    soup = BeautifulSoup(raw, "html.parser")
 
     # Extrai título
     title = ""
