@@ -7,6 +7,7 @@ import scraper
 import sitemap
 import config
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from scoring import PERGUNTAS, PLACEHOLDERS, calcular_score_ponderado
 
 st.set_page_config(
@@ -321,18 +322,14 @@ if avaliar:
         st.error("Preencha pelo menos uma resposta do especialista.")
         st.stop()
 
-    results = []
-    progress = st.progress(0, text="Avaliando...")
+    progress = st.progress(0, text="Avaliando perguntas em paralelo...")
 
     rag_instance = st.session_state.get("rag")
+    total = len(perguntas_preenchidas)
 
-    for idx, (i, pergunta, resposta_oficial) in enumerate(perguntas_preenchidas):
-        progress.progress(
-            idx / len(perguntas_preenchidas),
-            text=f"Avaliando pergunta {idx + 1}/{len(perguntas_preenchidas)}...",
-        )
-
-        result = ai_handler.evaluate_question(
+    def _evaluate(item):
+        idx, pergunta, resposta_oficial = item
+        return idx, pergunta, resposta_oficial, ai_handler.evaluate_question(
             context=st.session_state.contexto,
             question=pergunta,
             official_answer=resposta_oficial,
@@ -340,26 +337,40 @@ if avaliar:
             rag=rag_instance,
         )
 
-        row = {
-            "Pergunta": pergunta,
-            "Resposta Oficial": resposta_oficial,
-            "Resposta IA": result.get("resposta_ia", ""),
-            "Score": result.get("score", -1),
-            "Justificativa": result.get("justificativa", ""),
+    # Processa em paralelo (max 3 threads para respeitar rate limits)
+    results_map = {}
+    completed = 0
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        futures = {
+            executor.submit(_evaluate, item): item
+            for item in perguntas_preenchidas
         }
-        if result.get("fontes"):
-            row["Fontes Consultadas"] = "\n".join(result["fontes"])
-        if result.get("claims_preservados"):
-            row["Claims Preservados"] = result["claims_preservados"]
-        if result.get("claims_omitidos"):
-            row["Claims Omitidos"] = result["claims_omitidos"]
-        if result.get("hallucinations"):
-            row["Hallucinations"] = result["hallucinations"]
+        for future in as_completed(futures):
+            completed += 1
+            progress.progress(
+                completed / total,
+                text=f"Avaliadas {completed}/{total} perguntas...",
+            )
+            idx, pergunta, resposta_oficial, result = future.result()
+            row = {
+                "Pergunta": pergunta,
+                "Resposta Oficial": resposta_oficial,
+                "Resposta IA": result.get("resposta_ia", ""),
+                "Score": result.get("score", -1),
+                "Justificativa": result.get("justificativa", ""),
+            }
+            if result.get("fontes"):
+                row["Fontes Consultadas"] = "\n".join(result["fontes"])
+            if result.get("claims_preservados"):
+                row["Claims Preservados"] = result["claims_preservados"]
+            if result.get("claims_omitidos"):
+                row["Claims Omitidos"] = result["claims_omitidos"]
+            if result.get("hallucinations"):
+                row["Hallucinations"] = result["hallucinations"]
+            results_map[idx] = row
 
-        results.append(row)
-
-        if idx < len(perguntas_preenchidas) - 1:
-            time.sleep(2)
+    # Ordena resultados pela ordem original das perguntas
+    results = [results_map[i] for i, _, _ in perguntas_preenchidas]
 
     progress.progress(1.0, text="Concluído!")
     st.session_state.results = results
