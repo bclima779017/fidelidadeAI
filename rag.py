@@ -147,12 +147,13 @@ class AuditRAG:
         self._chunks: list[dict] = []  # {text, url, title, page_type, embedding}
         self._ingested = False
 
-    def ingest(self, page_contents: list[dict], progress_callback=None) -> int:
+    def ingest(self, page_contents: list[dict], progress_callback=None, health=None) -> int:
         """Ingere conteúdo de múltiplas páginas: chunka e embeda.
 
         Args:
             page_contents: Lista de {url, title, content, char_count}.
             progress_callback: Função(progress: float, text: str) para feedback.
+            health: EvalHealth opcional para registrar chunks finos.
 
         Returns:
             Número total de chunks indexados.
@@ -175,6 +176,12 @@ class AuditRAG:
                     "page_type": page_type,
                     "embedding": None,
                 })
+                if health is not None and len(chunk_text_item) < health.thin_chunk_threshold:
+                    health.thin_chunks.append({
+                        "url": page["url"],
+                        "text_preview": chunk_text_item[:80],
+                        "char_count": len(chunk_text_item),
+                    })
 
         if not all_chunks:
             return 0

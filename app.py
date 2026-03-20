@@ -9,6 +9,53 @@ import config
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from scoring import PERGUNTAS, PLACEHOLDERS, calcular_score_ponderado
+from health import EvalHealth
+
+def _render_health_panel(health: EvalHealth):
+    """Renderiza o painel de Saúde da Avaliação."""
+    cols = st.columns(5)
+
+    with cols[0]:
+        if health.context_truncated:
+            st.metric("Contexto Truncado", "Sim", f"-{health.pct_lost:.1f}%")
+            st.caption(f"{health.context_original_chars:,} &rarr; {health.context_used_chars:,} chars")
+        else:
+            st.metric("Contexto Truncado", "Não")
+
+    with cols[1]:
+        if health.json_parse_failures > 0:
+            st.metric("Fallback JSON", health.json_parse_failures)
+            for q in health.json_parse_details[:3]:
+                st.caption(f"&bull; {q[:50]}")
+        else:
+            st.metric("Fallback JSON", "0")
+
+    with cols[2]:
+        if health.total_retries > 0:
+            rate = sum(1 for d in health.retry_details if d["reason"] == "rate_limit")
+            st.metric("Retries API", health.total_retries)
+            st.caption(f"{rate} rate-limit, {health.total_retries - rate} outros")
+        else:
+            st.metric("Retries API", "0")
+
+    with cols[3]:
+        n_poor = len(health.poor_extraction_pages)
+        if n_poor > 0:
+            st.metric("Páginas Fracas", n_poor, f"<{health.poor_extraction_threshold} chars")
+            for p in health.poor_extraction_pages[:3]:
+                st.caption(f"&bull; {p['url'][-45:]} ({p['char_count']})")
+        else:
+            st.metric("Páginas Fracas", "0")
+
+    with cols[4]:
+        n_thin = len(health.thin_chunks)
+        if n_thin > 0:
+            st.metric("Chunks Finos", n_thin, f"<{health.thin_chunk_threshold} chars")
+            for c in health.thin_chunks[:3]:
+                st.caption(f"&bull; {c['text_preview'][:40]}... ({c['char_count']})")
+        else:
+            st.metric("Chunks Finos", "0")
+
 
 st.set_page_config(
     page_title="Auditoria GEO — Kípiai",
@@ -26,6 +73,7 @@ _DEFAULTS = {
     "last_url": "",
     "current_step": 0,
     "welcome_dismissed": False,
+    "eval_health": None,
 }
 for key, default in _DEFAULTS.items():
     if key not in st.session_state:
@@ -155,9 +203,14 @@ if modo == "Página única":
     if extrair and url:
         with st.spinner("Extraindo conteúdo do site..."):
             try:
-                st.session_state.contexto = scraper.extract_site_content(url)
+                health = EvalHealth()
+                content = scraper.extract_site_content(url)
+                if len(content) < health.poor_extraction_threshold:
+                    health.poor_extraction_pages.append({"url": url, "char_count": len(content)})
+                st.session_state.contexto = content
                 st.session_state.page_contents = None
                 st.session_state.rag = None
+                st.session_state.eval_health = health
                 st.session_state.last_url = url.strip()
                 st.session_state.current_step = 4  # Pula para respostas (sem seleção/chunk)
                 st.success(f"Contexto extraído: {len(st.session_state.contexto):,} caracteres")
@@ -220,12 +273,13 @@ else:
         if extrair_multi and selected_urls:
             st.session_state.current_step = max(st.session_state.current_step, 2)
             progress_bar = st.progress(0, text="Extraindo páginas...")
+            health = EvalHealth()
 
             def update_progress(p, text):
                 progress_bar.progress(min(p, 1.0), text=text)
 
             try:
-                pages = scraper.extract_multi_page_content(selected_urls, progress_callback=update_progress)
+                pages = scraper.extract_multi_page_content(selected_urls, progress_callback=update_progress, health=health)
                 st.session_state.page_contents = pages
 
                 # Agrega contexto para compatibilidade
@@ -250,7 +304,7 @@ else:
 
                     try:
                         rag_instance = AuditRAG(api_key)
-                        n_chunks = rag_instance.ingest(pages, progress_callback=update_rag_progress)
+                        n_chunks = rag_instance.ingest(pages, progress_callback=update_rag_progress, health=health)
                         st.session_state.rag = rag_instance
                         rag_progress.progress(1.0, text="Indexação concluída!")
                         st.session_state.current_step = max(st.session_state.current_step, 4)
@@ -259,6 +313,8 @@ else:
                         st.warning(f"Falha na indexação RAG: {e}. A auditoria usará texto agregado.")
                         st.session_state.rag = None
                         st.session_state.current_step = max(st.session_state.current_step, 4)
+
+                st.session_state.eval_health = health
 
             except Exception as e:
                 st.error(f"Erro na extração: {e}")
@@ -330,13 +386,16 @@ if avaliar:
 
     def _evaluate(item):
         idx, pergunta, resposta_oficial = item
-        return idx, pergunta, resposta_oficial, ai_handler.evaluate_question(
+        q_health = EvalHealth()
+        result = ai_handler.evaluate_question(
             context=contexto_atual,
             question=pergunta,
             official_answer=resposta_oficial,
             api_key=api_key,
             rag=rag_instance,
+            health=q_health,
         )
+        return idx, pergunta, resposta_oficial, result, q_health
 
     # Processa em paralelo (max 3 threads para respeitar rate limits)
     results_map = {}
@@ -352,7 +411,11 @@ if avaliar:
                 completed / total,
                 text=f"Avaliadas {completed}/{total} perguntas...",
             )
-            idx, pergunta, resposta_oficial, result = future.result()
+            idx, pergunta, resposta_oficial, result, q_health = future.result()
+            # Mescla health da thread no health master
+            master_health = st.session_state.get("eval_health") or EvalHealth()
+            master_health.merge(q_health)
+            st.session_state.eval_health = master_health
             row = {
                 "Pergunta": pergunta,
                 "Resposta Oficial": resposta_oficial,
@@ -390,6 +453,12 @@ if st.session_state.get("results"):
         col1.metric("Score Final Ponderado", f"{score_ponderado:.1f}")
         col2.metric("Score Mínimo", min(scores))
         col3.metric("Score Máximo", max(scores))
+
+    # Painel de Saúde da Avaliação
+    health = st.session_state.get("eval_health")
+    if health is not None and health.has_warnings:
+        with st.expander("Saúde da Avaliação", expanded=False):
+            _render_health_panel(health)
 
     # Tabela resumo compacta (só scores)
     df_resumo = pd.DataFrame([

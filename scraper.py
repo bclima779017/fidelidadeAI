@@ -75,12 +75,13 @@ def _extract_single_page(url: str) -> dict:
     }
 
 
-def extract_multi_page_content(urls: list[str], progress_callback=None) -> list[dict]:
+def extract_multi_page_content(urls: list[str], progress_callback=None, health=None) -> list[dict]:
     """Extrai conteúdo de múltiplas URLs.
 
     Args:
         urls: Lista de URLs para extrair.
         progress_callback: Função(progress: float, text: str) para feedback.
+        health: EvalHealth opcional para registrar páginas com extração fraca.
 
     Returns:
         Lista de dicts {url, title, content, char_count}.
@@ -96,6 +97,11 @@ def extract_multi_page_content(urls: list[str], progress_callback=None) -> list[
             page = _extract_single_page(url)
             if page["content"].strip():
                 results.append(page)
+                if health is not None and page["char_count"] < health.poor_extraction_threshold:
+                    health.poor_extraction_pages.append({
+                        "url": page["url"],
+                        "char_count": page["char_count"],
+                    })
         except Exception as e:
             print(f"  [AVISO] Falha ao extrair {url}: {e}")
             continue

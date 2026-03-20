@@ -46,11 +46,16 @@ def _get_model(api_key: str) -> genai.GenerativeModel:
     return _cached_model
 
 
-def build_prompt(context: str, question: str, official_answer: str, rag_mode: bool = False) -> str:
+def build_prompt(context: str, question: str, official_answer: str, rag_mode: bool = False, health=None) -> str:
     """Constrói o prompt de auditoria GEO."""
     if len(context) > _MAX_CONTEXT_CHARS:
+        original_len = len(context)
         context = context[:_MAX_CONTEXT_CHARS]
         print("  [AVISO] Contexto truncado para 100.000 caracteres.")
+        if health is not None:
+            health.context_truncated = True
+            health.context_original_chars = original_len
+            health.context_used_chars = _MAX_CONTEXT_CHARS
 
     rag_note = ""
     if rag_mode:
@@ -101,17 +106,21 @@ INSTRUÇÕES:
 }}"""
 
 
-def _parse_response(text: str) -> dict:
-    """Tenta extrair JSON da resposta do modelo."""
+def _parse_response(text: str) -> tuple[dict, bool]:
+    """Tenta extrair JSON da resposta do modelo.
+
+    Returns:
+        Tupla (resultado_dict, usou_fallback).
+    """
     try:
-        return json.loads(text)
+        return json.loads(text), False
     except json.JSONDecodeError:
         pass
 
     match = re.search(r"\{[\s\S]*\}", text)
     if match:
         try:
-            return json.loads(match.group())
+            return json.loads(match.group()), True
         except json.JSONDecodeError:
             pass
 
@@ -119,10 +128,10 @@ def _parse_response(text: str) -> dict:
         "resposta_ia": text,
         "score": -1,
         "justificativa": "[ERRO] Não foi possível interpretar a resposta do modelo.",
-    }
+    }, True
 
 
-def evaluate_question(context: str, question: str, official_answer: str, api_key: str = "", rag=None) -> dict:
+def evaluate_question(context: str, question: str, official_answer: str, api_key: str = "", rag=None, health=None) -> dict:
     """Envia o prompt para o Gemini e retorna o resultado parseado.
 
     Se api_key não for fornecida, tenta usar a do config.
@@ -150,7 +159,7 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
         rag_mode = True
 
     model = _get_model(api_key)
-    prompt = build_prompt(context, question, official_answer, rag_mode=rag_mode)
+    prompt = build_prompt(context, question, official_answer, rag_mode=rag_mode, health=health)
 
     max_retries = 3
     for attempt in range(max_retries):
@@ -167,7 +176,10 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
                     result["fontes"] = sources
                 return result
 
-            result = _parse_response(response.text)
+            result, used_fallback = _parse_response(response.text)
+            if used_fallback and health is not None:
+                health.json_parse_failures += 1
+                health.json_parse_details.append(question[:80])
             if sources:
                 result["fontes"] = sources
             return result
@@ -177,10 +189,16 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
             if attempt < max_retries - 1 and ("quota" in error_msg or "429" in error_msg or "resource" in error_msg):
                 wait = 2 ** (attempt + 1)
                 print(f"  [RETRY] Rate limit Gemini, aguardando {wait}s...")
+                if health is not None:
+                    health.total_retries += 1
+                    health.retry_details.append({"question": question[:80], "attempt": attempt + 1, "reason": "rate_limit", "wait_s": wait})
                 time.sleep(wait)
             elif attempt < max_retries - 1:
                 wait = 2 ** (attempt + 1)
                 print(f"  [RETRY] Erro Gemini ({e}), tentando novamente em {wait}s...")
+                if health is not None:
+                    health.total_retries += 1
+                    health.retry_details.append({"question": question[:80], "attempt": attempt + 1, "reason": "other", "wait_s": wait})
                 time.sleep(wait)
             else:
                 result = {
