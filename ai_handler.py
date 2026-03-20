@@ -4,9 +4,16 @@ import time
 import google.generativeai as genai
 
 _SYSTEM_INSTRUCTION = (
-    "Você é um auditor especializado em GEO (Generative Engine Optimization) e fidelidade "
-    "de RAG. Sua função é avaliar se uma resposta gerada por IA preserva com precisão as "
-    "informações da fonte original da marca.\n\n"
+    "Você é um auditor RIGOROSO especializado em GEO (Generative Engine Optimization) e "
+    "fidelidade de RAG. Sua função é avaliar com alto nível de exigência se uma resposta "
+    "gerada por IA preserva com precisão as informações da fonte original da marca.\n\n"
+    "REGRAS DE RIGOR:\n"
+    "- Na dúvida entre dois scores, SEMPRE escolha o menor.\n"
+    "- Claims generalizados ou reformulados com perda de especificidade DEVEM ser penalizados.\n"
+    "- Dados quantitativos (números, percentuais, valores) omitidos ou alterados: penalidade mínima de 15 pontos.\n"
+    "- Informações inventadas (hallucination) não presentes no contexto: score máximo de 40.\n"
+    "- Omissão de claims centrais da marca: score máximo de 60.\n"
+    "- Score acima de 90 é EXCEPCIONAL e exige preservação literal de todos os claims.\n\n"
     "Princípios do Manifesto GEO da Kípiai que você deve aplicar:\n"
     "1. COMPREENSIBILIDADE: A resposta deve ser clara e acessível, sem distorcer o conteúdo original.\n"
     "2. CITAÇÃO DE AUTORIDADE: Claims técnicos, certificações, prêmios e dados quantitativos "
@@ -27,7 +34,7 @@ def _get_model(api_key: str) -> genai.GenerativeModel:
     if _cached_model is None or api_key != _cached_api_key:
         genai.configure(api_key=api_key)
         _cached_model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
+            model_name="gemini-2.5-flash",
             system_instruction=_SYSTEM_INSTRUCTION,
             generation_config=genai.GenerationConfig(
                 temperature=0,
@@ -70,18 +77,26 @@ def build_prompt(context: str, question: str, official_answer: str, rag_mode: bo
 INSTRUÇÕES:
 1. Com base EXCLUSIVAMENTE no contexto acima, responda à pergunta.
 2. Compare sua resposta com a resposta oficial esperada.
-3. Atribua um score de 0 a 100 seguindo estes critérios:
-   - 90-100: Resposta semanticamente idêntica, preserva todos os claims, dados e citações.
-   - 70-89: Resposta correta no essencial, mas omite detalhes secundários ou reformula claims.
-   - 50-69: Resposta parcialmente correta, com omissões significativas ou imprecisões.
-   - 30-49: Resposta com erros factuais ou claims inventados não presentes no contexto.
-   - 0-29: Resposta incorreta, contraditória ao contexto ou completamente alucinada.
+3. ANTES de atribuir o score, analise EXPLICITAMENTE:
+   a) Claims da resposta oficial que FORAM preservados na sua resposta
+   b) Claims da resposta oficial que foram OMITIDOS ou generalizados
+   c) Informações na sua resposta que NÃO constam no contexto original (hallucinations)
+4. Atribua um score de 0 a 100 seguindo estes critérios RIGOROSOS:
+   - 95-100: TODOS os claims preservados LITERALMENTE, incluindo dados quantitativos, nomes próprios, certificações. NENHUMA omissão, nenhuma generalização. Score excepcional e raro.
+   - 85-94: Todos os claims principais preservados com dados quantitativos corretos, mas com reformulações menores que NÃO perdem informação factual.
+   - 70-84: Claims principais presentes mas com omissões de detalhes secundários (ex: lista incompleta de serviços, dados numéricos parciais).
+   - 50-69: Claims principais presentes mas com omissões significativas, generalizações que perdem especificidade, ou dados quantitativos ausentes.
+   - 30-49: Erros factuais, claims inventados não presentes no contexto, ou omissões de claims centrais da marca.
+   - 0-29: Resposta incorreta, contraditória ao contexto ou predominantemente alucinada.
 
-4. Responda EXCLUSIVAMENTE no formato JSON abaixo, sem texto adicional:
+5. Responda EXCLUSIVAMENTE no formato JSON abaixo, sem texto adicional:
 
 {{
   "resposta_ia": "Sua resposta extraída do contexto",
   "score": <número inteiro de 0 a 100>,
+  "claims_preservados": ["claim 1", "claim 2"],
+  "claims_omitidos": ["claim omitido 1"],
+  "hallucinations": ["informação inventada 1 (se houver)"],
   "justificativa": "Explicação concisa do score, citando claims preservados ou perdidos"
 }}"""
 

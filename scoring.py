@@ -14,6 +14,29 @@ PESOS = {
     "Quais são os principais produtos e/ou serviços?": 0.20,
 }
 
+PLACEHOLDERS = {
+    "Qual é a proposta de valor da marca?": (
+        "Ex: A marca oferece soluções de automação industrial que reduzem custos "
+        "operacionais em até 40%, com suporte técnico 24/7 e integração com sistemas legados."
+    ),
+    "Quais são os principais diferenciais competitivos?": (
+        "Ex: Tecnologia patenteada de compressão a frio, certificação ISO 9001, "
+        "presença em 15 países e atendimento personalizado com SLA de 4 horas."
+    ),
+    "Qual é o público-alvo da marca?": (
+        "Ex: Empresas de médio e grande porte do setor alimentício, com faturamento "
+        "acima de R$10M/ano, que buscam modernizar suas linhas de produção."
+    ),
+    "Qual problema a marca resolve para seus clientes?": (
+        "Ex: Elimina o desperdício de matéria-prima no processo produtivo, que representa "
+        "em média 12% dos custos, através de sensores IoT e análise preditiva."
+    ),
+    "Quais são os principais produtos e/ou serviços?": (
+        "Ex: 1) Plataforma SaaS de gestão de frotas; 2) Hardware de rastreamento "
+        "veicular com GPS+4G; 3) Consultoria de otimização logística; 4) API para ERPs."
+    ),
+}
+
 
 def calcular_score_ponderado(results: list[dict]) -> float:
     """Calcula o score final ponderado, normalizando pelos pesos das perguntas respondidas."""

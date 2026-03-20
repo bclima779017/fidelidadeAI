@@ -15,7 +15,7 @@ scraper.py           → Extração de texto visível (página única + multi-p�
 sitemap.py           → Descoberta de URLs via sitemap.xml ou crawling de links
 rag.py               → Pipeline RAG: chunking + embedding + retrieval semântico
 scoring.py           → Perguntas, pesos e cálculo do score final ponderado
-ai_handler.py        → Prompt de auditoria + chamada Gemini 2.0 Flash (temp=0)
+ai_handler.py        → Prompt de auditoria + chamada Gemini 2.5 Flash (temp=0)
 report_handler.py    → Geração de relatório .xlsx com formatação condicional + aba RAG
 ```
 
@@ -33,7 +33,7 @@ report_handler.py    → Geração de relatório .xlsx com formatação condicio
 1. Usuário informa URL → sitemap.py descobre páginas (sitemap.xml ou links)
 2. Usuário seleciona páginas em tabela com checkboxes
 3. scraper.py extrai conteúdo de cada página (com título/URL)
-4. rag.py chunka (~500 tokens) e embeda via Gemini text-embedding-004
+4. rag.py chunka (~500 tokens) e embeda via Gemini gemini-embedding-001
 5. Para cada pergunta: retrieval híbrido (keyword + semântico) → top-10 chunks
 6. ai_handler.py envia contexto focado ao Gemini com atribuição de fonte
 7. Resultados com source attribution + relatório Excel com aba de metadados RAG
@@ -64,13 +64,13 @@ report_handler.py    → Geração de relatório .xlsx com formatação condicio
 - Executar CLI: `python main.py`
 
 ## Modelo de IA
-- **Gemini 2.0 Flash** com `temperature=0`, `top_p=1.0`, `top_k=1`
-- **Gemini text-embedding-004** para embeddings no pipeline RAG
+- **Gemini 2.5 Flash** com `temperature=0`, `top_p=1.0`, `top_k=1`
+- **Gemini gemini-embedding-001** para embeddings no pipeline RAG
 - Prompt retorna JSON estruturado, com fallback de parsing via regex
 
 ## Pipeline RAG
 - **Chunking**: ~500 tokens (~2000 chars) com overlap de ~100 tokens, respeitando sentenças
-- **Embedding**: text-embedding-004 em batches de até 100 chunks
+- **Embedding**: gemini-embedding-001 em batches de até 100 chunks
 - **Storage**: numpy arrays em memória (leve, efêmero por sessão)
 - **Retrieval**: Híbrido (keywords por pergunta + similaridade cosseno) com boost por tipo de página
 - **Deduplicação**: Chunks com cosseno > 0.92 removidos

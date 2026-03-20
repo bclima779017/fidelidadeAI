@@ -192,7 +192,7 @@ class AuditRAG:
             batch_texts = [c["text"] for c in all_chunks[start:end]]
 
             result = genai.embed_content(
-                model="models/text-embedding-004",
+                model="models/gemini-embedding-001",
                 content=batch_texts,
             )
 
@@ -225,7 +225,7 @@ class AuditRAG:
 
         # Embeda a query
         result = genai.embed_content(
-            model="models/text-embedding-004",
+            model="models/gemini-embedding-001",
             content=query,
         )
         query_embedding = np.array(result["embedding"], dtype=np.float32)

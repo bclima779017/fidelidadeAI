@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import ai_handler
@@ -6,7 +7,7 @@ import scraper
 import sitemap
 import config
 import time
-from scoring import PERGUNTAS, calcular_score_ponderado
+from scoring import PERGUNTAS, PLACEHOLDERS, calcular_score_ponderado
 
 st.set_page_config(
     page_title="Auditoria GEO — Kípiai",
@@ -14,10 +15,50 @@ st.set_page_config(
     layout="wide",
 )
 
-st.title("Auditoria de Fidelidade RAG/GEO — Kípiai")
-st.markdown("Avalie a fidelidade das respostas de IA comparando com as respostas do especialista da marca.")
+# --- Inicializar session_state ---
+_DEFAULTS = {
+    "contexto": "",
+    "page_contents": None,
+    "rag": None,
+    "discovered_urls": None,
+    "results": None,
+    "last_url": "",
+    "current_step": 0,
+    "welcome_dismissed": False,
+}
+for key, default in _DEFAULTS.items():
+    if key not in st.session_state:
+        st.session_state[key] = default
 
-# --- Sidebar: Configuração ---
+
+# --- Modal de boas-vindas ---
+@st.dialog("Bem-vindo à Auditoria GEO — Kípiai", width="large")
+def show_welcome():
+    welcome_path = os.path.join(os.path.dirname(__file__), "content", "welcome.md")
+    try:
+        with open(welcome_path, "r", encoding="utf-8") as f:
+            st.markdown(f.read())
+    except FileNotFoundError:
+        st.markdown("Bem-vindo! Siga os passos na interface para auditar a fidelidade do seu site.")
+    if st.button("Entendido! Vamos começar", type="primary", use_container_width=True):
+        st.session_state.welcome_dismissed = True
+        st.rerun()
+
+
+if not st.session_state.welcome_dismissed:
+    show_welcome()
+
+
+# --- Sidebar: Configuração + Progresso ---
+STEPS = [
+    ("Seleção de site", "site"),
+    ("Seleção de páginas", "pages"),
+    ("Interpretação das páginas", "extract"),
+    ("Preparo de base (chunking)", "chunk"),
+    ("Respostas às perguntas", "answers"),
+    ("Relatório final", "report"),
+]
+
 with st.sidebar:
     st.header("Configuração")
     api_key = st.text_input(
@@ -26,6 +67,45 @@ with st.sidebar:
         type="password",
         help="Informe sua chave da API Gemini. Também pode ser definida no .env",
     )
+
+    # Barra de progresso vertical
+    st.divider()
+    st.subheader("Progresso")
+    current = st.session_state.current_step
+    steps_html = ""
+    for i, (label, _) in enumerate(STEPS):
+        if i < current:
+            color = "#28a745"
+            icon = "&#10003;"
+            font_weight = "normal"
+            opacity = "1"
+        elif i == current:
+            color = "#007bff"
+            icon = "&#9679;"
+            font_weight = "bold"
+            opacity = "1"
+        else:
+            color = "#6c757d"
+            icon = "&#9675;"
+            font_weight = "normal"
+            opacity = "0.5"
+
+        connector = ""
+        if i < len(STEPS) - 1:
+            line_color = "#28a745" if i < current else "#dee2e6"
+            connector = (
+                f'<div style="border-left: 2px solid {line_color}; '
+                f'height: 20px; margin-left: 9px;"></div>'
+            )
+
+        steps_html += (
+            f'<div style="display:flex; align-items:center; gap:8px; opacity:{opacity}">'
+            f'<span style="color:{color}; font-size:18px; width:20px; text-align:center">{icon}</span>'
+            f'<span style="color:{color}; font-weight:{font_weight}; font-size:14px">{label}</span>'
+            f'</div>{connector}'
+        )
+
+    st.markdown(f'<div style="padding:8px 0">{steps_html}</div>', unsafe_allow_html=True)
 
     # Métricas RAG no sidebar
     if "rag" in st.session_state and st.session_state.rag is not None and st.session_state.rag.is_ready:
@@ -38,15 +118,27 @@ with st.sidebar:
             avg_chunks = stats["total_chunks"] / stats["total_pages"]
             st.metric("Chunks/Página (média)", f"{avg_chunks:.1f}")
 
-# --- Inicializar session_state ---
-for key in ["contexto", "page_contents", "rag", "discovered_urls", "results"]:
-    if key not in st.session_state:
-        st.session_state[key] = "" if key == "contexto" else None
+
+st.title("Auditoria de Fidelidade RAG/GEO — Kípiai")
+st.markdown("Avalie a fidelidade das respostas de IA comparando com as respostas do especialista da marca.")
 
 # --- Seção 1: URL do site ---
 st.header("1. Contexto do Site")
 
 url = st.text_input("URL do site para análise", placeholder="https://www.exemplo.com.br")
+
+# Detecção de troca de URL
+url_changed = url.strip() != "" and url.strip() != st.session_state.last_url and st.session_state.last_url != ""
+has_context = bool(st.session_state.contexto)
+
+if url_changed and has_context:
+    st.warning("URL diferente da última análise detectada.")
+    if st.button("Reiniciar com novo site", type="primary"):
+        for key in ["contexto", "page_contents", "rag", "discovered_urls", "results"]:
+            st.session_state[key] = "" if key == "contexto" else None
+        st.session_state.last_url = ""
+        st.session_state.current_step = 0
+        st.rerun()
 
 modo = st.radio(
     "Modo de extração",
@@ -65,6 +157,8 @@ if modo == "Página única":
                 st.session_state.contexto = scraper.extract_site_content(url)
                 st.session_state.page_contents = None
                 st.session_state.rag = None
+                st.session_state.last_url = url.strip()
+                st.session_state.current_step = 4  # Pula para respostas (sem seleção/chunk)
                 st.success(f"Contexto extraído: {len(st.session_state.contexto):,} caracteres")
             except Exception as e:
                 st.error(f"Erro ao acessar o site: {e}")
@@ -88,6 +182,8 @@ else:
                 urls = sitemap.discover_urls(url, max_pages=max_pages)
                 if urls:
                     st.session_state.discovered_urls = urls
+                    st.session_state.last_url = url.strip()
+                    st.session_state.current_step = max(st.session_state.current_step, 1)
                     st.success(f"{len(urls)} páginas descobertas")
                 else:
                     st.warning("Nenhuma página encontrada. Verifique a URL.")
@@ -121,6 +217,7 @@ else:
         extrair_multi = st.button("Extrair Selecionadas", type="primary")
 
         if extrair_multi and selected_urls:
+            st.session_state.current_step = max(st.session_state.current_step, 2)
             progress_bar = st.progress(0, text="Extraindo páginas...")
 
             def update_progress(p, text):
@@ -138,6 +235,7 @@ else:
 
                 total_chars = sum(p["char_count"] for p in pages)
                 progress_bar.progress(1.0, text="Extração concluída!")
+                st.session_state.current_step = max(st.session_state.current_step, 3)
                 st.success(f"{len(pages)} páginas extraídas — {total_chars:,} caracteres no total")
 
                 # Indexação RAG automática se API key disponível
@@ -154,10 +252,12 @@ else:
                         n_chunks = rag_instance.ingest(pages, progress_callback=update_rag_progress)
                         st.session_state.rag = rag_instance
                         rag_progress.progress(1.0, text="Indexação concluída!")
+                        st.session_state.current_step = max(st.session_state.current_step, 4)
                         st.success(f"RAG indexado: {n_chunks} chunks prontos para retrieval semântico")
                     except Exception as e:
                         st.warning(f"Falha na indexação RAG: {e}. A auditoria usará texto agregado.")
                         st.session_state.rag = None
+                        st.session_state.current_step = max(st.session_state.current_step, 4)
 
             except Exception as e:
                 st.error(f"Erro na extração: {e}")
@@ -194,6 +294,7 @@ for i, pergunta in enumerate(PERGUNTAS):
         pergunta,
         key=f"resp_{i}",
         height=100,
+        placeholder=PLACEHOLDERS.get(pergunta, ""),
     )
 
 # --- Seção 3: Avaliação ---
@@ -248,6 +349,12 @@ if avaliar:
         }
         if result.get("fontes"):
             row["Fontes Consultadas"] = "\n".join(result["fontes"])
+        if result.get("claims_preservados"):
+            row["Claims Preservados"] = result["claims_preservados"]
+        if result.get("claims_omitidos"):
+            row["Claims Omitidos"] = result["claims_omitidos"]
+        if result.get("hallucinations"):
+            row["Hallucinations"] = result["hallucinations"]
 
         results.append(row)
 
@@ -256,6 +363,7 @@ if avaliar:
 
     progress.progress(1.0, text="Concluído!")
     st.session_state.results = results
+    st.session_state.current_step = 5
 
 # --- Seção 4: Resultados ---
 if st.session_state.get("results"):
@@ -271,35 +379,72 @@ if st.session_state.get("results"):
         col2.metric("Score Mínimo", min(scores))
         col3.metric("Score Máximo", max(scores))
 
-    # Tabela de resultados
-    df = pd.DataFrame(results)
-    display_cols = ["Pergunta", "Resposta Oficial", "Resposta IA", "Score", "Justificativa"]
-    has_sources = "Fontes Consultadas" in df.columns
-    if has_sources:
-        display_cols.append("Fontes Consultadas")
-
+    # Tabela resumo compacta (só scores)
+    df_resumo = pd.DataFrame([
+        {"Pergunta": r["Pergunta"], "Score": r["Score"]}
+        for r in results
+    ])
     st.dataframe(
-        df[display_cols],
+        df_resumo,
         use_container_width=True,
+        hide_index=True,
         column_config={
             "Score": st.column_config.ProgressColumn(
-                "Score",
-                min_value=0,
-                max_value=100,
-                format="%d",
+                "Score", min_value=0, max_value=100, format="%d",
             ),
         },
     )
 
-    # Atribuição de fontes por pergunta
-    if has_sources:
-        with st.expander("Fontes consultadas por pergunta"):
-            for r in results:
-                if r.get("Fontes Consultadas"):
-                    st.markdown(f"**{r['Pergunta']}**")
-                    for fonte in r["Fontes Consultadas"].split("\n"):
-                        st.markdown(f"- `{fonte}`")
-                    st.divider()
+    # Cards expandíveis por pergunta (resolve truncamento)
+    for r in results:
+        score = r["Score"]
+        if score >= 70:
+            score_emoji = "🟢"
+        elif score >= 50:
+            score_emoji = "🟡"
+        elif score >= 0:
+            score_emoji = "🔴"
+        else:
+            score_emoji = "⚫"
+
+        with st.expander(f"{score_emoji} {r['Pergunta']} — Score: {score}", expanded=False):
+            col_left, col_right = st.columns(2)
+            with col_left:
+                st.markdown("**Resposta do Especialista:**")
+                st.markdown(r["Resposta Oficial"])
+            with col_right:
+                st.markdown("**Resposta da IA:**")
+                st.markdown(r["Resposta IA"])
+
+            st.divider()
+            st.markdown(f"**Justificativa:** {r['Justificativa']}")
+
+            # Análise de claims (se disponível)
+            if r.get("Claims Preservados") or r.get("Claims Omitidos") or r.get("Hallucinations"):
+                st.divider()
+                col_a, col_b, col_c = st.columns(3)
+                with col_a:
+                    st.markdown("**Claims Preservados:**")
+                    for c in (r.get("Claims Preservados") or []):
+                        st.markdown(f"- ✅ {c}")
+                with col_b:
+                    st.markdown("**Claims Omitidos:**")
+                    for c in (r.get("Claims Omitidos") or []):
+                        st.markdown(f"- ⚠️ {c}")
+                with col_c:
+                    st.markdown("**Hallucinations:**")
+                    hallu = r.get("Hallucinations") or []
+                    if hallu:
+                        for c in hallu:
+                            st.markdown(f"- ❌ {c}")
+                    else:
+                        st.markdown("Nenhuma detectada")
+
+            if r.get("Fontes Consultadas"):
+                st.divider()
+                st.markdown("**Fontes Consultadas:**")
+                for fonte in r["Fontes Consultadas"].split("\n"):
+                    st.markdown(f"- `{fonte}`")
 
     # Preparar metadados RAG para o relatório
     rag_metadata = None
