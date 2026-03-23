@@ -426,69 +426,90 @@ if avaliar:
             executor.submit(_evaluate, item): item
             for item in perguntas_preenchidas
         }
-        for future in as_completed(futures, timeout=eval_timeout * total):
-            completed += 1
-            progress.progress(
-                completed / total,
-                text=f"Avaliadas {completed}/{total} perguntas...",
-            )
-            try:
-                idx, pergunta, resposta_oficial, result, q_health = future.result(timeout=eval_timeout)
-            except TimeoutError:
-                item = futures[future]
-                idx, pergunta, resposta_oficial = item
-                result = {
-                    "resposta_ia": "",
-                    "score": -1,
-                    "justificativa": "[ERRO] Timeout: a API não respondeu a tempo.",
+        try:
+            for future in as_completed(futures, timeout=eval_timeout * total):
+                completed += 1
+                progress.progress(
+                    completed / total,
+                    text=f"Avaliadas {completed}/{total} perguntas...",
+                )
+                try:
+                    idx, pergunta, resposta_oficial, result, q_health = future.result(timeout=eval_timeout)
+                except TimeoutError:
+                    item = futures[future]
+                    idx, pergunta, resposta_oficial = item
+                    result = {
+                        "resposta_ia": "",
+                        "score": -1,
+                        "justificativa": "[ERRO] Timeout: a API não respondeu a tempo.",
+                    }
+                    q_health = EvalHealth()
+                except Exception as e:
+                    # Safety net: se algo escapou do try/except interno
+                    item = futures[future]
+                    idx, pergunta, resposta_oficial = item
+                    result = {
+                        "resposta_ia": "",
+                        "score": -1,
+                        "justificativa": f"[ERRO] Falha inesperada no thread: {e}",
+                    }
+                    q_health = EvalHealth()
+                # Mescla health da thread no health master
+                master_health = st.session_state.get("eval_health") or EvalHealth()
+                master_health.merge(q_health)
+                st.session_state.eval_health = master_health
+                row = {
+                    "Pergunta": pergunta,
+                    "Resposta Oficial": resposta_oficial,
+                    "Resposta IA": result.get("resposta_ia", ""),
+                    "Score": result.get("score", -1),
+                    "Match Semântico": result.get("match_semantico", -1),
+                    "Taxa Claims": result.get("taxa_claims", -1),
+                    "Score Gemini Original": result.get("score_gemini_original", -1),
+                    "Justificativa": result.get("justificativa", ""),
                 }
-                q_health = EvalHealth()
-            except Exception as e:
-                # Safety net: se algo escapou do try/except interno
-                item = futures[future]
-                idx, pergunta, resposta_oficial = item
-                result = {
-                    "resposta_ia": "",
-                    "score": -1,
-                    "justificativa": f"[ERRO] Falha inesperada no thread: {e}",
-                }
-                q_health = EvalHealth()
-            # Mescla health da thread no health master
-            master_health = st.session_state.get("eval_health") or EvalHealth()
-            master_health.merge(q_health)
-            st.session_state.eval_health = master_health
-            row = {
-                "Pergunta": pergunta,
-                "Resposta Oficial": resposta_oficial,
-                "Resposta IA": result.get("resposta_ia", ""),
-                "Score": result.get("score", -1),
-                "Match Semântico": result.get("match_semantico", -1),
-                "Taxa Claims": result.get("taxa_claims", -1),
-                "Score Gemini Original": result.get("score_gemini_original", -1),
-                "Justificativa": result.get("justificativa", ""),
-            }
-            if result.get("fontes"):
-                row["Fontes Consultadas"] = "\n".join(result["fontes"])
-            if result.get("claims_preservados"):
-                row["Claims Preservados"] = result["claims_preservados"]
-            if result.get("claims_omitidos"):
-                row["Claims Omitidos"] = result["claims_omitidos"]
-            if result.get("hallucinations"):
-                row["Hallucinations"] = result["hallucinations"]
-            results_map[idx] = row
-            # Salva resultados parciais a cada pergunta concluída
-            st.session_state.results = [
-                results_map.get(i, {
-                    "Pergunta": PERGUNTAS[i], "Resposta Oficial": respostas[i],
-                    "Resposta IA": "", "Score": -1, "Match Semântico": -1,
-                    "Taxa Claims": -1, "Score Gemini Original": -1,
-                    "Justificativa": "[PENDENTE] Avaliação em andamento...",
-                })
-                for i, _, _ in perguntas_preenchidas
-            ]
+                if result.get("fontes"):
+                    row["Fontes Consultadas"] = "\n".join(result["fontes"])
+                if result.get("claims_preservados"):
+                    row["Claims Preservados"] = result["claims_preservados"]
+                if result.get("claims_omitidos"):
+                    row["Claims Omitidos"] = result["claims_omitidos"]
+                if result.get("hallucinations"):
+                    row["Hallucinations"] = result["hallucinations"]
+                results_map[idx] = row
+                # Salva resultados parciais a cada pergunta concluída
+                st.session_state.results = [
+                    results_map.get(i, {
+                        "Pergunta": PERGUNTAS[i], "Resposta Oficial": respostas[i],
+                        "Resposta IA": "", "Score": -1, "Match Semântico": -1,
+                        "Taxa Claims": -1, "Score Gemini Original": -1,
+                        "Justificativa": "[PENDENTE] Avaliação em andamento...",
+                    })
+                    for i, _, _ in perguntas_preenchidas
+                ]
+        except TimeoutError:
+            # Timeout global: preenche perguntas não avaliadas com erro
+            st.warning(f"Timeout global atingido ({eval_timeout * total}s). Algumas perguntas não foram avaliadas.")
+            for i, pergunta, resposta_oficial in perguntas_preenchidas:
+                if i not in results_map:
+                    results_map[i] = {
+                        "Pergunta": pergunta,
+                        "Resposta Oficial": resposta_oficial,
+                        "Resposta IA": "",
+                        "Score": -1,
+                        "Match Semântico": -1,
+                        "Taxa Claims": -1,
+                        "Score Gemini Original": -1,
+                        "Justificativa": "[ERRO] Timeout global: avaliação não concluída a tempo.",
+                    }
 
     # Resultado final ordenado
-    results = [results_map[i] for i, _, _ in perguntas_preenchidas]
+    results = [results_map.get(i, {
+        "Pergunta": PERGUNTAS[i], "Resposta Oficial": respostas[i],
+        "Resposta IA": "", "Score": -1, "Match Semântico": -1,
+        "Taxa Claims": -1, "Score Gemini Original": -1,
+        "Justificativa": "[ERRO] Avaliação não concluída.",
+    }) for i, _, _ in perguntas_preenchidas]
 
     progress.progress(1.0, text="Concluído!")
     st.session_state.results = results
@@ -659,13 +680,16 @@ if st.session_state.get("results"):
     )
     _sug_hash = tuple(s["id"] for s in suggestions_list) if suggestions_list else ()
 
-    filepath = _generate_cached_report(
-        _results_hashable, rag_metadata, score_ponderado, _sug_hash,
-    )
-    with open(filepath, "rb") as f:
-        st.download_button(
-            label="Download Relatório Excel",
-            data=f.read(),
-            file_name=filepath.split("/")[-1].split("\\")[-1],
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    try:
+        filepath = _generate_cached_report(
+            _results_hashable, rag_metadata, score_ponderado, _sug_hash,
         )
+        with open(filepath, "rb") as f:
+            st.download_button(
+                label="Download Relatório Excel",
+                data=f.read(),
+                file_name=filepath.split("/")[-1].split("\\")[-1],
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+    except Exception as e:
+        st.error(f"Erro ao gerar relatório Excel: {e}")

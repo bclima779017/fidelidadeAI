@@ -76,7 +76,7 @@ def generate_report(results: list[dict], rag_metadata: dict | None = None, score
             score_val = score_cell.value
             if score_val is not None and score_val != "":
                 try:
-                    score_num = int(score_val)
+                    score_num = float(score_val)
                 except (ValueError, TypeError):
                     continue
                 if score_num >= 70:
