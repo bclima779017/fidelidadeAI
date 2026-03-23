@@ -163,8 +163,14 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
     sources = []
     rag_mode = False
     if rag is not None and rag.is_ready:
-        context, sources = rag.retrieve(question)
-        rag_mode = True
+        try:
+            context, sources = rag.retrieve(question)
+            rag_mode = True
+        except Exception as e:
+            print(f"  [AVISO] Falha no retrieval RAG ({e}), usando contexto agregado.")
+            if health is not None:
+                health.total_retries += 1
+                health.retry_details.append({"question": question[:80], "attempt": 0, "reason": "rag_retrieve_error", "wait_s": 0})
 
     model = _get_model(api_key)
     prompt = build_prompt(context, question, official_answer, rag_mode=rag_mode, health=health)
@@ -174,7 +180,12 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
         try:
             response = model.generate_content(prompt)
 
-            if not response.text:
+            try:
+                response_text = response.text
+            except (ValueError, AttributeError):
+                response_text = None
+
+            if not response_text:
                 result = {
                     "resposta_ia": "",
                     "score": -1,
@@ -184,7 +195,7 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
                     result["fontes"] = sources
                 return result
 
-            result, used_fallback = parse_json_response(response.text)
+            result, used_fallback = parse_json_response(response_text)
             if used_fallback and health is not None:
                 health.json_parse_failures += 1
                 health.json_parse_details.append(question[:80])

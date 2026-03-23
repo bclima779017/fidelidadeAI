@@ -400,14 +400,21 @@ if avaliar:
     def _evaluate(item):
         idx, pergunta, resposta_oficial = item
         q_health = EvalHealth()
-        result = ai_handler.evaluate_question(
-            context=contexto_atual,
-            question=pergunta,
-            official_answer=resposta_oficial,
-            api_key=api_key,
-            rag=rag_instance,
-            health=q_health,
-        )
+        try:
+            result = ai_handler.evaluate_question(
+                context=contexto_atual,
+                question=pergunta,
+                official_answer=resposta_oficial,
+                api_key=api_key,
+                rag=rag_instance,
+                health=q_health,
+            )
+        except Exception as e:
+            result = {
+                "resposta_ia": "",
+                "score": -1,
+                "justificativa": f"[ERRO] Exceção não tratada na avaliação: {e}",
+            }
         return idx, pergunta, resposta_oficial, result, q_health
 
     # Processa em paralelo (max 3 threads para respeitar rate limits)
@@ -424,7 +431,18 @@ if avaliar:
                 completed / total,
                 text=f"Avaliadas {completed}/{total} perguntas...",
             )
-            idx, pergunta, resposta_oficial, result, q_health = future.result()
+            try:
+                idx, pergunta, resposta_oficial, result, q_health = future.result()
+            except Exception as e:
+                # Safety net: se algo escapou do try/except interno
+                item = futures[future]
+                idx, pergunta, resposta_oficial = item
+                result = {
+                    "resposta_ia": "",
+                    "score": -1,
+                    "justificativa": f"[ERRO] Falha inesperada no thread: {e}",
+                }
+                q_health = EvalHealth()
             # Mescla health da thread no health master
             master_health = st.session_state.get("eval_health") or EvalHealth()
             master_health.merge(q_health)
