@@ -32,6 +32,7 @@ def generate_report(results: list[dict], rag_metadata: dict | None = None, score
         columns.append("Fontes Consultadas")
 
     df = pd.DataFrame(results)[columns]
+    df["Score"] = pd.to_numeric(df["Score"], errors="coerce").fillna(-1)
 
     avg_score = df["Score"].mean()
     min_score = df["Score"].min()
