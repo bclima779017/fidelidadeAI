@@ -178,8 +178,6 @@ Responda EXCLUSIVAMENTE em JSON:
     try:
         response = model.generate_content(prompt)
         parsed, _ = parse_json_response(response.text)
-        if isinstance(parsed, dict) and "error" not in parsed:
-            return parsed
         return parsed
     except Exception:
         return {

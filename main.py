@@ -166,18 +166,16 @@ def run_audit():
     print("  AUDITORIA GEO CONCLUÍDA")
     print("=" * 60)
     if scores:
-        score_ponderado = calcular_score_ponderado(results)
         print(f"  Total de perguntas:  {len(results)}")
         print(f"  Score ponderado:     {score_ponderado:.1f}")
         print(f"  Score mínimo:        {min(scores)}")
         print(f"  Score máximo:        {max(scores)}")
     if errors:
         print(f"  Linhas com erro:     {len(errors)}")
-    if rag_instance and rag_instance.is_ready:
+    if rag_instance and rag_instance.is_ready and rag_metadata:
         print(f"  Modo:                RAG Multi-Página")
-        stats = rag_instance.get_stats()
-        print(f"  Páginas indexadas:   {stats['total_pages']}")
-        print(f"  Chunks indexados:    {stats['total_chunks']}")
+        print(f"  Páginas indexadas:   {rag_metadata['total_pages']}")
+        print(f"  Chunks indexados:    {rag_metadata['total_chunks']}")
     print("=" * 60)
 
 
