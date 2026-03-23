@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-dotenv
+google-generativeai
+numpy
+requests
+beautifulsoup4
+openpyxl
+pandas
+pdfplumber
+sse-starlette
