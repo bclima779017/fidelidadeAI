@@ -611,7 +611,7 @@ if st.session_state.get("results"):
     @st.cache_data(show_spinner=False)
     def _generate_cached_report(_results_tuple, _rag_metadata, _score_ponderado, _suggestions_hash):
         return report_handler.generate_report(
-            list(_results_tuple), rag_metadata=_rag_metadata, score_ponderado=_score_ponderado,
+            [dict(t) for t in _results_tuple], rag_metadata=_rag_metadata, score_ponderado=_score_ponderado,
             suggestions_data=suggestions_list if suggestions_list else None,
         )
 
