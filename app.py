@@ -95,12 +95,12 @@ def show_welcome():
     except FileNotFoundError:
         st.markdown("Bem-vindo! Siga os passos na interface para auditar a fidelidade do seu site.")
     if st.button("Entendido! Vamos começar", type="primary", use_container_width=True):
-        st.session_state.welcome_dismissed = True
         st.query_params["started"] = "1"
         st.rerun()
 
 
 if not st.session_state.welcome_dismissed:
+    st.session_state.welcome_dismissed = True
     show_welcome()
 
 
