@@ -1,20 +1,19 @@
-"""Motor de matching: cruza resultados da auditoria com a base de conhecimento First-Claim."""
+"""Motor de sugestões: cruza resultados da auditoria com a base de conhecimento First-Claim."""
 
 import json
 import os
-import re
 
 import numpy as np
 import streamlit as st
 
 import config
-from utils import cosine_similarity, ensure_genai_configured, parse_json_response
+from utils import ensure_genai_configured, parse_json_response
 
 KNOWLEDGE_DIR = os.path.join(os.path.dirname(__file__), "knowledge")
 KB_PATH = os.path.join(KNOWLEDGE_DIR, "knowledge_base.json")
 EMB_PATH = os.path.join(KNOWLEDGE_DIR, "embeddings.npz")
 
-# Mapeamento de perguntas da auditoria → chave curta usada na knowledge base
+# Mapeamento de perguntas da auditoria -> chave curta usada na knowledge base
 _QUESTION_KEY_MAP = {
     "proposta de valor": "proposta de valor",
     "diferenciais competitivos": "diferenciais competitivos",
@@ -35,17 +34,9 @@ def _question_to_key(question: str) -> str:
     return ""
 
 
-def _has_quantitative_claims(claims: list[str]) -> bool:
-    """Verifica se algum claim contém dados quantitativos."""
-    for claim in claims:
-        if re.search(r"\d+[%,.]|\d+\s*(mil|reais|dólares|anos|meses|horas)", claim, re.IGNORECASE):
-            return True
-    return False
-
-
 @st.cache_resource
 def load_knowledge() -> tuple[list[dict], np.ndarray] | None:
-    """Carrega a base de conhecimento uma única vez (cache compartilhado entre sessões)."""
+    """Carrega a base de conhecimento uma unica vez (cache compartilhado entre sessoes)."""
     if not os.path.exists(KB_PATH) or not os.path.exists(EMB_PATH):
         return None
 
@@ -59,135 +50,83 @@ def load_knowledge() -> tuple[list[dict], np.ndarray] | None:
 
 
 def is_available() -> bool:
-    """Verifica se a base de conhecimento está disponível."""
+    """Verifica se a base de conhecimento esta disponivel."""
     return os.path.exists(KB_PATH) and os.path.exists(EMB_PATH)
 
 
-def match_suggestions(
-    results: list[dict],
-    claims_embeddings: dict[str, np.ndarray] | None = None,
-    top_k: int = 3,
-) -> dict[str, list[dict]]:
-    """Para cada pergunta, retorna as top-k sugestões mais relevantes.
+def match_suggestions(results: list[dict], top_k: int = 5) -> list[dict]:
+    """Retorna as top_k sugestoes mais relevantes para os resultados da auditoria.
+
+    Logica simplificada:
+    1. Para cada recomendacao do KB, verifica se ao menos 1 pergunta relacionada tem score < 80
+    2. Calcula relevancia = media dos gaps (80 - score) * multiplicador de impacto
+    3. Ordena por relevancia e retorna as top_k
 
     Args:
-        results: Lista de resultados da auditoria (mesma estrutura do session_state.results).
-        claims_embeddings: Embeddings dos claims omitidos por pergunta (opcional, para similaridade).
-        top_k: Número máximo de sugestões por pergunta.
+        results: Lista de resultados da auditoria.
+        top_k: Numero maximo de sugestoes retornadas (default: 5).
 
     Returns:
-        Dict mapeando pergunta → lista de sugestões rankeadas.
+        Lista de sugestoes rankeadas por relevancia.
     """
     loaded = load_knowledge()
     if loaded is None:
-        return {}
+        return []
 
-    kb, embeddings = loaded
-    suggestions_by_question: dict[str, list[dict]] = {}
-    used_ids: set[str] = set()  # Para deduplicação entre perguntas
+    kb, _embeddings = loaded
+
+    # Monta mapa pergunta_key -> (score, texto_pergunta)
+    scores_by_key: dict[str, tuple[float, str]] = {}
+    for r in results:
+        pergunta = r["Pergunta"]
+        score = r.get("Score", -1)
+        if score < 0:
+            continue
+        q_key = _question_to_key(pergunta)
+        if q_key:
+            scores_by_key[q_key] = (score, pergunta)
 
     # Boost por impacto
     impact_boost = {"alto": 1.3, "medio": 1.0, "baixo": 0.7}
 
-    for r in results:
-        pergunta = r["Pergunta"]
-        score = r.get("Score", -1)
-        match_sem = r.get("Match Semântico", -1)
-        taxa_cl = r.get("Taxa Claims", -1)
-        claims_omitidos = r.get("Claims Omitidos", []) or []
-        hallucinations = r.get("Hallucinations", []) or []
+    candidates = []
 
-        if score < 0:
-            continue  # Erro na avaliação, pula
+    for init in kb:
+        perguntas_rel = init.get("perguntas_relacionadas", [])
+        impacto = init.get("impacto", "medio")
 
-        q_key = _question_to_key(pergunta)
-        candidates = []
+        # Coleta gaps das perguntas relacionadas que tem score < 80
+        gaps = []
+        perguntas_afetadas = []
+        for p_key in perguntas_rel:
+            if p_key in scores_by_key:
+                score, pergunta_texto = scores_by_key[p_key]
+                if score < 80:
+                    gaps.append(80 - score)
+                    perguntas_afetadas.append(f"{pergunta_texto} ({score:.0f})")
 
-        for i, init in enumerate(kb):
-            criterios = init.get("criterios_ativacao", {})
-            init_id = init.get("id", f"FC-{i}")
+        # Recomendacao so ativa se ao menos 1 pergunta relacionada tem gap
+        if not gaps:
+            continue
 
-            # --- Filtro por critérios de ativação ---
-            # Normaliza: se valores vieram como decimal (0-1), converte para 0-100
-            score_max = criterios.get("score_max", 70)
-            match_max = criterios.get("match_semantico_max", 75)
-            taxa_max = criterios.get("taxa_claims_max", 70)
-            if score_max <= 1:
-                score_max *= 100
-            if match_max <= 1:
-                match_max *= 100
-            if taxa_max <= 1:
-                taxa_max *= 100
+        # Relevancia = media dos gaps * multiplicador de impacto
+        base = sum(gaps) / len(gaps)
+        relevancia = min(base * impact_boost.get(impacto, 1.0), 100)
 
-            # Pelo menos um critério deve ser atingido
-            score_match = score < score_max
-            sem_match = match_sem >= 0 and match_sem < match_max
-            taxa_match = taxa_cl >= 0 and taxa_cl < taxa_max
+        candidates.append({
+            "id": init.get("id", ""),
+            "titulo": init.get("titulo", ""),
+            "eixo": f"Eixo {init.get('eixo_numero', '')}: {init.get('eixo', '')}",
+            "impacto": impacto,
+            "relevancia": round(relevancia, 1),
+            "por_que": init.get("descricao_profunda", ""),
+            "o_que_fazer": init.get("implementacao_humana", ""),
+            "perguntas_afetadas": perguntas_afetadas,
+        })
 
-            if not (score_match or sem_match or taxa_match):
-                continue
-
-            # Filtro por hallucinations (se requerido)
-            if criterios.get("requer_hallucinations", False) and not hallucinations:
-                continue
-
-            # Filtro por claims quantitativos (se requerido)
-            if criterios.get("requer_claims_quantitativos", False):
-                if not _has_quantitative_claims(claims_omitidos):
-                    continue
-
-            # --- Scoring de relevância ---
-            relevance = 0.0
-
-            # Fator 1: Quantos critérios foram atingidos (0-3)
-            criteria_hits = sum([score_match, sem_match, taxa_match])
-            relevance += criteria_hits * 15  # Max 45
-
-            # Fator 2: Match de pergunta relacionada (0 ou 25)
-            perguntas_rel = init.get("perguntas_relacionadas", [])
-            if q_key and q_key in perguntas_rel:
-                relevance += 25
-
-            # Fator 3: Severidade do problema (quanto pior o score, mais relevante)
-            if score_match:
-                gap = score_max - score
-                relevance += min(gap, 30)  # Max 30, proporcional à distância
-
-            # Fator 4: Similaridade semântica com claims omitidos (se embeddings disponíveis)
-            if claims_embeddings and pergunta in claims_embeddings and i < len(embeddings):
-                sim = cosine_similarity(claims_embeddings[pergunta], embeddings[i])
-                relevance += sim * 20  # Max ~20
-
-            # Boost por impacto
-            impacto = init.get("impacto", "medio")
-            relevance *= impact_boost.get(impacto, 1.0)
-
-            # Normaliza para 0-100
-            relevance = min(relevance, 100)
-
-            candidates.append({
-                "id": init_id,
-                "titulo": init.get("titulo", ""),
-                "eixo": init.get("eixo", ""),
-                "eixo_numero": init.get("eixo_numero", 0),
-                "descricao": init.get("descricao_profunda", ""),
-                "implementacao": init.get("implementacao_humana", ""),
-                "impacto": impacto,
-                "relevancia": round(relevance, 1),
-            })
-
-        # Ordena por relevância e deduplica
-        candidates.sort(key=lambda x: x["relevancia"], reverse=True)
-        selected = []
-        for c in candidates:
-            if c["id"] not in used_ids and len(selected) < top_k:
-                selected.append(c)
-                used_ids.add(c["id"])
-
-        if selected:
-            suggestions_by_question[pergunta] = selected
-
-    return suggestions_by_question
+    # Ordena por relevancia e retorna top_k
+    candidates.sort(key=lambda x: x["relevancia"], reverse=True)
+    return candidates[:top_k]
 
 
 def contextualize_suggestion(
@@ -196,7 +135,7 @@ def contextualize_suggestion(
     contexto_resumo: str,
     api_key: str,
 ) -> dict:
-    """Contextualiza uma sugestão genérica para a marca avaliada via Gemini.
+    """Contextualiza uma sugestao generica para a marca avaliada via Gemini.
 
     Returns:
         Dict com sugestao_contextualizada, exemplo_antes, exemplo_depois.
@@ -209,9 +148,14 @@ def contextualize_suggestion(
         generation_config=genai.GenerationConfig(temperature=0.3),
     )
 
-    claims_text = "\n".join(f"- {c}" for c in claims_omitidos) if claims_omitidos else "Nenhum claim omitido específico."
+    claims_text = "\n".join(f"- {c}" for c in claims_omitidos) if claims_omitidos else "Nenhum claim omitido especifico."
 
-    prompt = f"""Você é um consultor GEO da Kípiai. Adapte a sugestão genérica abaixo para o caso específico desta marca.
+    # Usa os nomes de campo do novo formato
+    titulo = suggestion.get("titulo", "")
+    descricao = suggestion.get("por_que", "") or suggestion.get("descricao", "")
+    implementacao = suggestion.get("o_que_fazer", "") or suggestion.get("implementacao", "")
+
+    prompt = f"""Voce e um consultor GEO da Kipiai. Adapte a sugestao generica abaixo para o caso especifico desta marca.
 
 CONTEXTO DO SITE DA MARCA (resumo):
 {contexto_resumo[:3000]}
@@ -219,16 +163,16 @@ CONTEXTO DO SITE DA MARCA (resumo):
 CLAIMS OMITIDOS PELA IA:
 {claims_text}
 
-SUGESTÃO GENÉRICA DO PROTOCOLO FIRST-CLAIM:
-Título: {suggestion['titulo']}
-Descrição: {suggestion['descricao']}
-Implementação: {suggestion['implementacao']}
+SUGESTAO GENERICA DO PROTOCOLO FIRST-CLAIM:
+Titulo: {titulo}
+Descricao: {descricao}
+Implementacao: {implementacao}
 
 Responda EXCLUSIVAMENTE em JSON:
 {{
-  "sugestao_contextualizada": "Texto adaptado explicando o que a marca específica deve fazer",
-  "exemplo_antes": "Como o conteúdo está hoje (baseado nos claims omitidos)",
-  "exemplo_depois": "Como deveria ficar após a melhoria"
+  "sugestao_contextualizada": "Texto adaptado explicando o que a marca especifica deve fazer",
+  "exemplo_antes": "Como o conteudo esta hoje (baseado nos claims omitidos)",
+  "exemplo_depois": "Como deveria ficar apos a melhoria"
 }}"""
 
     try:
@@ -239,7 +183,7 @@ Responda EXCLUSIVAMENTE em JSON:
         return parsed
     except Exception:
         return {
-            "sugestao_contextualizada": suggestion["implementacao"],
+            "sugestao_contextualizada": implementacao,
             "exemplo_antes": "",
             "exemplo_depois": "",
         }

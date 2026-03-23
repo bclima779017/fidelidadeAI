@@ -564,65 +564,38 @@ if st.session_state.get("results"):
                     st.markdown(f"- `{fonte}`")
 
     # --- Seção 5: Sugestões de Melhoria ---
-    suggestions_map = {}
+    suggestions_list = []
     if suggestions.is_available():
-        suggestions_map = suggestions.match_suggestions(results)
+        suggestions_list = suggestions.match_suggestions(results)
 
-    if suggestions_map:
+    if suggestions_list:
         st.header("5. Sugestões de Melhoria — Protocolo First Claim")
-        st.markdown("Iniciativas recomendadas com base nos resultados da auditoria e no estudo de First-Claim da Kípiai.")
+        st.markdown("As 5 iniciativas mais relevantes com base nos resultados da auditoria.")
 
-        for pergunta, sugs in suggestions_map.items():
-            # Encontra o score da pergunta
-            pergunta_score = next((r["Score"] for r in results if r["Pergunta"] == pergunta), -1)
-            if pergunta_score >= 70:
-                p_emoji = "🟢"
-            elif pergunta_score >= 50:
-                p_emoji = "🟡"
-            else:
-                p_emoji = "🔴"
+        imp_emoji = {"alto": "🔴", "medio": "🟡", "baixo": "🟢"}
 
-            with st.expander(f"{p_emoji} {pergunta} — Score: {pergunta_score:.1f}", expanded=(pergunta_score < 70)):
-                for sug in sugs:
-                    imp = sug["impacto"]
-                    imp_color = {"alto": "🔴", "medio": "🟡", "baixo": "🟢"}.get(imp, "⚪")
+        for i, sug in enumerate(suggestions_list, 1):
+            with st.container(border=True):
+                # Cabeçalho: número + título + impacto
+                col_title, col_imp = st.columns([4, 1])
+                with col_title:
+                    st.markdown(f"### {imp_emoji.get(sug['impacto'], '⚪')} {i}. {sug['titulo']}")
+                    st.caption(sug["eixo"])
+                with col_imp:
+                    st.metric("Impacto", sug["impacto"].capitalize())
 
-                    st.markdown(f"**{imp_color} {sug['titulo']}** — Eixo {sug['eixo_numero']}: {sug['eixo']}")
+                # Por que é importante
+                por_que = sug["por_que"]
+                if len(por_que) > 300:
+                    por_que = por_que[:297] + "..."
+                st.markdown(f"**Por que é importante:** {por_que}")
 
-                    col_rel, col_imp = st.columns([1, 1])
-                    col_rel.metric("Relevância", f"{sug['relevancia']:.0f}%")
-                    col_imp.metric("Impacto", imp.capitalize())
+                # O que fazer
+                st.markdown(f"**O que fazer:** {sug['o_que_fazer']}")
 
-                    st.markdown(f"**O que fazer:** {sug['implementacao']}")
-                    with st.popover("Ver descrição completa"):
-                        st.markdown(sug["descricao"])
-
-                    # Contextualização via Gemini (sob demanda)
-                    pergunta_results = next((r for r in results if r["Pergunta"] == pergunta), {})
-                    claims_omit = pergunta_results.get("Claims Omitidos", []) or []
-
-                    if claims_omit and api_key:
-                        btn_key = f"ctx_{sug['id']}_{hash(pergunta) % 10000}"
-                        state_key = f"_ctx_result_{btn_key}"
-                        if st.button(f"Contextualizar para esta marca", key=btn_key):
-                            with st.spinner("Adaptando sugestão para a marca..."):
-                                ctx = suggestions.contextualize_suggestion(
-                                    suggestion=sug,
-                                    claims_omitidos=claims_omit,
-                                    contexto_resumo=st.session_state.contexto[:3000],
-                                    api_key=api_key,
-                                )
-                            st.session_state[state_key] = ctx
-                        # Renderiza resultado persistido
-                        if state_key in st.session_state:
-                            ctx = st.session_state[state_key]
-                            st.markdown(f"**Sugestão adaptada:** {ctx.get('sugestao_contextualizada', '')}")
-                            if ctx.get("exemplo_antes"):
-                                st.markdown(f"**Antes:** {ctx['exemplo_antes']}")
-                            if ctx.get("exemplo_depois"):
-                                st.markdown(f"**Depois:** {ctx['exemplo_depois']}")
-
-                    st.divider()
+                # Perguntas afetadas
+                if sug["perguntas_afetadas"]:
+                    st.caption(f"Afeta: {' · '.join(sug['perguntas_afetadas'])}")
 
     # Preparar metadados RAG para o relatório
     rag_metadata = None
@@ -636,20 +609,20 @@ if st.session_state.get("results"):
 
     # Download Excel (cacheado para não regenerar a cada rerun)
     @st.cache_data(show_spinner=False)
-    def _generate_cached_report(_results_tuple, _rag_metadata, _score_ponderado, _suggestions_keys):
+    def _generate_cached_report(_results_tuple, _rag_metadata, _score_ponderado, _suggestions_hash):
         return report_handler.generate_report(
             list(_results_tuple), rag_metadata=_rag_metadata, score_ponderado=_score_ponderado,
-            suggestions_data=suggestions_map if suggestions_map else None,
+            suggestions_data=suggestions_list if suggestions_list else None,
         )
 
     # Converte results para tuple para ser hashable pelo cache
     _results_hashable = tuple(
         tuple(sorted((k, str(v)) for k, v in r.items())) for r in results
     )
-    _sug_keys = tuple(sorted(suggestions_map.keys())) if suggestions_map else ()
+    _sug_hash = tuple(s["id"] for s in suggestions_list) if suggestions_list else ()
 
     filepath = _generate_cached_report(
-        _results_hashable, rag_metadata, score_ponderado, _sug_keys,
+        _results_hashable, rag_metadata, score_ponderado, _sug_hash,
     )
     with open(filepath, "rb") as f:
         st.download_button(

@@ -10,14 +10,14 @@ from openpyxl.utils import get_column_letter
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "output")
 
 
-def generate_report(results: list[dict], rag_metadata: dict | None = None, score_ponderado: float | None = None, suggestions_data: dict | None = None) -> str:
+def generate_report(results: list[dict], rag_metadata: dict | None = None, score_ponderado: float | None = None, suggestions_data: list[dict] | None = None) -> str:
     """Gera o relatório .xlsx com formatação condicional e retorna o caminho do arquivo.
 
     Args:
         results: Lista de dicts com os resultados da auditoria.
         rag_metadata: Metadados RAG opcionais {total_pages, total_chunks, chunks_per_page}.
         score_ponderado: Score final ponderado já calculado via scoring.calcular_score_ponderado().
-        suggestions_data: Dict mapeando pergunta → lista de sugestões do Protocolo First-Claim.
+        suggestions_data: Lista de sugestões rankeadas do Protocolo First-Claim.
     """
     os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -174,42 +174,44 @@ def generate_report(results: list[dict], rag_metadata: dict | None = None, score
         # --- Aba de Sugestões First-Claim ---
         if suggestions_data:
             sug_rows = []
-            for pergunta, sugs in suggestions_data.items():
-                for sug in sugs:
-                    sug_rows.append({
-                        "Pergunta": pergunta,
-                        "Iniciativa": sug.get("titulo", ""),
-                        "Eixo": f"{sug.get('eixo_numero', '')} - {sug.get('eixo', '')}",
-                        "Impacto": sug.get("impacto", "").capitalize(),
-                        "Relevância": f"{sug.get('relevancia', 0):.0f}%",
-                        "O que fazer": sug.get("implementacao", ""),
-                    })
+            for i, sug in enumerate(suggestions_data, 1):
+                sug_rows.append({
+                    "#": i,
+                    "Iniciativa": sug.get("titulo", ""),
+                    "Eixo": sug.get("eixo", ""),
+                    "Impacto": sug.get("impacto", "").capitalize(),
+                    "Por que": sug.get("por_que", ""),
+                    "O que fazer": sug.get("o_que_fazer", ""),
+                    "Perguntas afetadas": " · ".join(sug.get("perguntas_afetadas", [])),
+                })
 
             if sug_rows:
+                num_sug_cols = 7
                 df_sug = pd.DataFrame(sug_rows)
                 df_sug.to_excel(writer, sheet_name="Sugestões", index=False, startrow=1)
                 ws_sug = writer.sheets["Sugestões"]
 
                 # Título
-                ws_sug.merge_cells("A1:F1")
+                end_sug_col = get_column_letter(num_sug_cols)
+                ws_sug.merge_cells(f"A1:{end_sug_col}1")
                 title_cell = ws_sug["A1"]
                 title_cell.value = "Sugestões de Melhoria — Protocolo First Claim"
                 title_cell.font = Font(bold=True, size=14, color="1F4E79")
                 title_cell.alignment = Alignment(horizontal="center", vertical="center")
 
                 # Header
-                for col in range(1, 7):
+                for col in range(1, num_sug_cols + 1):
                     cell = ws_sug.cell(row=2, column=col)
                     cell.fill = header_fill
                     cell.font = header_font
                     cell.alignment = Alignment(horizontal="center", wrap_text=True)
 
                 # Larguras
-                sug_widths = {"A": 40, "B": 30, "C": 25, "D": 12, "E": 12, "F": 60}
+                sug_widths = {"A": 5, "B": 30, "C": 25, "D": 12, "E": 50, "F": 50, "G": 40}
                 for col_letter, width in sug_widths.items():
                     ws_sug.column_dimensions[col_letter].width = width
 
-                # Formatação condicional por impacto
+                # Formatação condicional por impacto (coluna D)
                 for row in range(3, 3 + len(df_sug)):
                     imp_cell = ws_sug.cell(row=row, column=4)
                     imp_val = (imp_cell.value or "").lower()
@@ -225,9 +227,9 @@ def generate_report(results: list[dict], rag_metadata: dict | None = None, score
                     imp_cell.alignment = Alignment(horizontal="center")
 
                 # Wrap text
-                for row in ws_sug.iter_rows(min_row=2, max_row=2 + len(df_sug), min_col=1, max_col=6):
+                for row in ws_sug.iter_rows(min_row=2, max_row=2 + len(df_sug), min_col=1, max_col=num_sug_cols):
                     for cell in row:
-                        if cell.column != 4:
+                        if cell.column not in (1, 4):
                             cell.alignment = Alignment(wrap_text=True, vertical="top")
 
     return filepath
