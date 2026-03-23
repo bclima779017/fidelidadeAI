@@ -108,15 +108,9 @@ STEPS = [
     ("Relatório final", "report"),
 ]
 
-with st.sidebar:
-    st.header("Configuração")
-    api_key = st.text_input(
-        "Gemini API Key",
-        value=config.GEMINI_API_KEY or "",
-        type="password",
-        help="Informe sua chave da API Gemini. Também pode ser definida no .env",
-    )
+api_key = config.GEMINI_API_KEY
 
+with st.sidebar:
     # Barra de progresso vertical
     st.divider()
     st.subheader("Progresso")
@@ -366,7 +360,7 @@ avaliar = st.button("Avaliar Fidelidade", type="primary", use_container_width=Tr
 
 if avaliar:
     if not api_key:
-        st.error("Informe a Gemini API Key na sidebar.")
+        st.error("Gemini API Key não configurada. Defina a variável de ambiente GEMINI_API_KEY.")
         st.stop()
 
     if not st.session_state.contexto:
