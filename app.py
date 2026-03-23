@@ -324,39 +324,46 @@ else:
                 st.caption(f"... e mais {len(st.session_state.page_contents) - 5} páginas")
 
 # --- Preview de Retrieval ---
-if (st.session_state.get("rag") is not None
-        and st.session_state.rag.is_ready):
-    with st.expander("Preview de Retrieval RAG (ver contexto por pergunta)"):
-        for pergunta in PERGUNTAS:
-            st.markdown(f"**{pergunta}**")
-            context_preview, sources = st.session_state.rag.retrieve(pergunta, top_k=3)
-            if sources:
-                st.caption(f"Fontes: {', '.join(sources[:3])}")
-            st.text(context_preview[:800] + ("..." if len(context_preview) > 800 else ""))
-            st.divider()
+@st.cache_data(ttl=300, show_spinner=False)
+def _cached_retrieve(_rag, pergunta, top_k=3):
+    return _rag.retrieve(pergunta, top_k=top_k)
+
+@st.fragment
+def _rag_preview():
+    if (st.session_state.get("rag") is not None
+            and st.session_state.rag.is_ready):
+        with st.expander("Preview de Retrieval RAG (ver contexto por pergunta)"):
+            for pergunta in PERGUNTAS:
+                st.markdown(f"**{pergunta}**")
+                context_preview, sources = _cached_retrieve(st.session_state.rag, pergunta, top_k=3)
+                if sources:
+                    st.caption(f"Fontes: {', '.join(sources[:3])}")
+                st.text(context_preview[:800] + ("..." if len(context_preview) > 800 else ""))
+                st.divider()
+
+_rag_preview()
 
 # --- Seção 2: Respostas do especialista ---
 st.header("2. Respostas do Especialista")
 st.markdown("Preencha as respostas oficiais da marca para cada pergunta:")
-
-respostas = {}
-for i, pergunta in enumerate(PERGUNTAS):
-    respostas[i] = st.text_area(
-        pergunta,
-        key=f"resp_{i}",
-        height=100,
-        placeholder=PLACEHOLDERS.get(pergunta, ""),
-    )
-
-# --- Seção 3: Avaliação ---
-st.header("3. Avaliação de Fidelidade")
 
 rag_active = (st.session_state.get("rag") is not None
               and st.session_state.rag.is_ready)
 if rag_active:
     st.info("Modo RAG ativo: retrieval semântico será usado para cada pergunta.")
 
-avaliar = st.button("Avaliar Fidelidade", type="primary", use_container_width=True)
+with st.form("form_respostas"):
+    respostas = {}
+    for i, pergunta in enumerate(PERGUNTAS):
+        respostas[i] = st.text_area(
+            pergunta,
+            key=f"resp_{i}",
+            height=100,
+            placeholder=PLACEHOLDERS.get(pergunta, ""),
+        )
+
+    # --- Seção 3: Avaliação ---
+    avaliar = st.form_submit_button("Avaliar Fidelidade", type="primary", use_container_width=True)
 
 if avaliar:
     if not api_key:
