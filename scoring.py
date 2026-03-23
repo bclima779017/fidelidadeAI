@@ -1,3 +1,7 @@
+"""Perguntas fixas, pesos e funções de scoring da auditoria GEO."""
+
+import config
+
 PERGUNTAS = [
     "Qual é a proposta de valor da marca?",
     "Quais são os principais diferenciais competitivos?",
@@ -38,11 +42,6 @@ PLACEHOLDERS = {
 }
 
 
-# Pesos dos dois fatores do scoring por pergunta
-PESO_SEMANTICO = 1  # Peso da similaridade semântica
-PESO_CLAIMS = 2     # Peso da taxa de correspondência de claims
-
-
 def calcular_score_pergunta(match_semantico: float, taxa_claims: float) -> float:
     """Calcula o score de uma pergunta pela média ponderada dos dois fatores.
 
@@ -53,8 +52,8 @@ def calcular_score_pergunta(match_semantico: float, taxa_claims: float) -> float
     Returns:
         Score final da pergunta (0-100).
     """
-    soma_pesos = PESO_SEMANTICO + PESO_CLAIMS
-    return (PESO_SEMANTICO * match_semantico + PESO_CLAIMS * taxa_claims) / soma_pesos
+    soma_pesos = config.PESO_SEMANTICO + config.PESO_CLAIMS
+    return (config.PESO_SEMANTICO * match_semantico + config.PESO_CLAIMS * taxa_claims) / soma_pesos
 
 
 def calcular_score_ponderado(results: list[dict]) -> float:

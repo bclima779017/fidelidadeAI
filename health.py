@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass, field
 
+import config
+
 
 @dataclass
 class EvalHealth:
@@ -20,13 +22,13 @@ class EvalHealth:
     total_retries: int = 0
     retry_details: list[dict] = field(default_factory=list)
 
-    # Indicador 4: Páginas com extração fraca (< 500 chars)
+    # Indicador 4: Páginas com extração fraca
     poor_extraction_pages: list[dict] = field(default_factory=list)
-    poor_extraction_threshold: int = 500
+    poor_extraction_threshold: int = config.POOR_EXTRACTION_THRESHOLD
 
-    # Indicador 5: Chunks finos (< 200 chars)
+    # Indicador 5: Chunks finos
     thin_chunks: list[dict] = field(default_factory=list)
-    thin_chunk_threshold: int = 200
+    thin_chunk_threshold: int = config.THIN_CHUNK_THRESHOLD
 
     @property
     def pct_lost(self) -> float:

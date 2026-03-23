@@ -36,7 +36,8 @@ e a IA compara as respostas extraídas do site com as do especialista, gerando u
 ```
 app.py               → Interface web Streamlit (entrada/saída principal)
 main.py              → CLI alternativo (loop de auditoria via terminal)
-config.py            → Carrega variáveis de ambiente (.env)
+config.py            → Configuração centralizada: variáveis de ambiente (.env) + constantes do pipeline
+utils.py             → Funções utilitárias compartilhadas (cosine_similarity, embed_texts, ensure_genai_configured, parse_json_response, clean_html_tags)
 scraper.py           → Extração de texto visível (página única + multi-página)
 sitemap.py           → Descoberta de URLs via sitemap.xml ou crawling de links
 rag.py               → Pipeline RAG: chunking + embedding + retrieval semântico

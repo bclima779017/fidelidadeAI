@@ -1,4 +1,7 @@
+"""CLI alternativo para auditoria de fidelidade RAG/GEO via terminal."""
+
 import time
+
 import ai_handler
 import report_handler
 import scraper

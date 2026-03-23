@@ -2,10 +2,12 @@
 
 import json
 import os
-import re
 
 import numpy as np
 import streamlit as st
+
+import config
+from utils import cosine_similarity, ensure_genai_configured, parse_json_response
 
 KNOWLEDGE_DIR = os.path.join(os.path.dirname(__file__), "knowledge")
 KB_PATH = os.path.join(KNOWLEDGE_DIR, "knowledge_base.json")
@@ -30,16 +32,6 @@ def _question_to_key(question: str) -> str:
         if pattern in q_lower:
             return key
     return ""
-
-
-def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    """Similaridade cosseno entre dois vetores."""
-    dot = np.dot(a, b)
-    norm_a = np.linalg.norm(a)
-    norm_b = np.linalg.norm(b)
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return float(dot / (norm_a * norm_b))
 
 
 def _has_quantitative_claims(claims: list[str]) -> bool:
@@ -162,7 +154,7 @@ def match_suggestions(
 
             # Fator 4: Similaridade semântica com claims omitidos (se embeddings disponíveis)
             if claims_embeddings and pergunta in claims_embeddings and i < len(embeddings):
-                sim = _cosine_similarity(claims_embeddings[pergunta], embeddings[i])
+                sim = cosine_similarity(claims_embeddings[pergunta], embeddings[i])
                 relevance += sim * 20  # Max ~20
 
             # Boost por impacto
@@ -210,9 +202,9 @@ def contextualize_suggestion(
     """
     import google.generativeai as genai
 
-    genai.configure(api_key=api_key)
+    ensure_genai_configured(api_key)
     model = genai.GenerativeModel(
-        model_name="gemini-2.5-flash",
+        model_name=config.GEMINI_MODEL_NAME,
         generation_config=genai.GenerationConfig(temperature=0.3),
     )
 
@@ -240,11 +232,10 @@ Responda EXCLUSIVAMENTE em JSON:
 
     try:
         response = model.generate_content(prompt)
-        raw = response.text
-        match = re.search(r"\{[\s\S]*\}", raw)
-        if match:
-            return json.loads(match.group())
-        return json.loads(raw)
+        parsed, _ = parse_json_response(response.text)
+        if isinstance(parsed, dict) and "error" not in parsed:
+            return parsed
+        return parsed
     except Exception:
         return {
             "sugestao_contextualizada": suggestion["implementacao"],

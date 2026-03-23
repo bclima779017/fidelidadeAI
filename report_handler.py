@@ -1,3 +1,5 @@
+"""Geração de relatório Excel (.xlsx) com formatação condicional e múltiplas abas."""
+
 import os
 from datetime import datetime
 import pandas as pd

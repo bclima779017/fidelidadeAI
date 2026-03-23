@@ -2,8 +2,12 @@
 
 import re
 import math
+from urllib.parse import urlparse
+
 import numpy as np
-import google.generativeai as genai
+
+import config
+from utils import cosine_similarity, embed_texts, ensure_genai_configured
 
 # Keywords por pergunta para retrieval híbrido
 _QUESTION_KEYWORDS = {
@@ -38,7 +42,6 @@ def _detect_page_type(url: str, title: str) -> str:
     title_lower = title.lower() if title else ""
 
     # Homepage: path é / ou vazio
-    from urllib.parse import urlparse
     path = urlparse(url_lower).path.strip("/")
     if not path or path == "index.html" or path == "index.php":
         return "home"
@@ -73,7 +76,7 @@ def _get_question_key(question: str) -> str:
     return ""
 
 
-def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 400) -> list[str]:
+def chunk_text(text: str, chunk_size: int = config.CHUNK_SIZE, overlap: int = config.CHUNK_OVERLAP) -> list[str]:
     """Divide texto em chunks respeitando limites de sentença.
 
     Args:
@@ -128,22 +131,12 @@ def chunk_text(text: str, chunk_size: int = 2000, overlap: int = 400) -> list[st
     return chunks
 
 
-def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
-    """Calcula similaridade cosseno entre dois vetores."""
-    dot = np.dot(a, b)
-    norm_a = np.linalg.norm(a)
-    norm_b = np.linalg.norm(b)
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-    return float(dot / (norm_a * norm_b))
-
-
 class AuditRAG:
     """Pipeline RAG para auditoria de fidelidade."""
 
     def __init__(self, api_key: str):
         self.api_key = api_key
-        genai.configure(api_key=api_key)
+        ensure_genai_configured(api_key)
         self._chunks: list[dict] = []  # {text, url, title, page_type, embedding}
         self._ingested = False
 
@@ -190,7 +183,7 @@ class AuditRAG:
         if progress_callback:
             progress_callback(0.3, f"Gerando embeddings para {len(all_chunks)} chunks...")
 
-        batch_size = 100
+        batch_size = config.EMBEDDING_BATCH_SIZE
         total_batches = math.ceil(len(all_chunks) / batch_size)
 
         for batch_idx in range(total_batches):
@@ -198,12 +191,9 @@ class AuditRAG:
             end = min(start + batch_size, len(all_chunks))
             batch_texts = [c["text"] for c in all_chunks[start:end]]
 
-            result = genai.embed_content(
-                model="models/gemini-embedding-001",
-                content=batch_texts,
-            )
+            embeddings = embed_texts(batch_texts)
 
-            for i, embedding in enumerate(result["embedding"]):
+            for i, embedding in enumerate(embeddings):
                 all_chunks[start + i]["embedding"] = np.array(embedding, dtype=np.float32)
 
             if progress_callback:
@@ -214,7 +204,7 @@ class AuditRAG:
         self._ingested = True
         return len(self._chunks)
 
-    def retrieve(self, query: str, top_k: int = 10) -> tuple[str, list[str]]:
+    def retrieve(self, query: str, top_k: int = config.RAG_TOP_K) -> tuple[str, list[str]]:
         """Recupera os chunks mais relevantes para uma query.
 
         Usa retrieval híbrido: pré-filtra por keywords, depois rankeia por embedding.
@@ -231,11 +221,8 @@ class AuditRAG:
             return "", []
 
         # Embeda a query
-        result = genai.embed_content(
-            model="models/gemini-embedding-001",
-            content=query,
-        )
-        query_embedding = np.array(result["embedding"], dtype=np.float32)
+        query_emb_list = embed_texts(query)
+        query_embedding = np.array(query_emb_list[0], dtype=np.float32)
 
         question_key = _get_question_key(query)
         keywords = _QUESTION_KEYWORDS.get(question_key, [])
@@ -247,7 +234,7 @@ class AuditRAG:
                 continue
 
             # Score semântico
-            sim = _cosine_similarity(query_embedding, chunk["embedding"])
+            sim = cosine_similarity(query_embedding, chunk["embedding"])
 
             # Boost por keyword match
             keyword_boost = 1.0
@@ -275,8 +262,8 @@ class AuditRAG:
                 break
             is_duplicate = False
             for _, sel_chunk in selected:
-                sim = _cosine_similarity(chunk["embedding"], sel_chunk["embedding"])
-                if sim > 0.92:
+                sim = cosine_similarity(chunk["embedding"], sel_chunk["embedding"])
+                if sim > config.DEDUP_THRESHOLD:
                     is_duplicate = True
                     break
             if not is_duplicate:

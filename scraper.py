@@ -1,37 +1,17 @@
+"""Extração de texto visível de páginas web (página única e multi-página)."""
+
 import requests
 from bs4 import BeautifulSoup
-import security
 
-_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                   "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-}
+import config
+import security
+from utils import clean_html_tags
 
 
 def extract_site_content(url: str) -> str:
     """Extrai texto visível de uma URL, removendo scripts, styles e navegação."""
-    url = security.validate_url(url)
-    response = requests.get(
-        url, headers=_HEADERS, timeout=30,
-        allow_redirects=True, stream=True,
-    )
-    response.raise_for_status()
-    security.check_content_length(response.headers)
-    security.check_content_type_html(response.headers)
-    content = response.content[:security.MAX_RESPONSE_BYTES]
-    response.close()
-
-    soup = BeautifulSoup(content, "html.parser")
-
-    # Remover elementos de ruído
-    for tag in soup(["script", "style", "nav", "footer", "header", "noscript", "iframe", "svg"]):
-        tag.decompose()
-
-    text = soup.get_text(separator="\n", strip=True)
-
-    # Limpar linhas vazias excessivas
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
-    return "\n".join(lines)
+    page = _extract_single_page(url)
+    return page["content"]
 
 
 def _extract_single_page(url: str) -> dict:
@@ -42,7 +22,7 @@ def _extract_single_page(url: str) -> dict:
     """
     url = security.validate_url(url)
     response = requests.get(
-        url, headers=_HEADERS, timeout=30,
+        url, headers=config.SCRAPER_HEADERS, timeout=30,
         allow_redirects=True, stream=True,
     )
     response.raise_for_status()
@@ -60,8 +40,7 @@ def _extract_single_page(url: str) -> dict:
         title = title_tag.string.strip()
 
     # Remover elementos de ruído
-    for tag in soup(["script", "style", "nav", "footer", "header", "noscript", "iframe", "svg"]):
-        tag.decompose()
+    clean_html_tags(soup)
 
     text = soup.get_text(separator="\n", strip=True)
     lines = [line.strip() for line in text.splitlines() if line.strip()]

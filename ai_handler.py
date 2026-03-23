@@ -1,9 +1,13 @@
-import json
-import re
+"""Prompt de auditoria GEO e chamada ao Gemini para avaliação de fidelidade."""
+
 import time
+
 import numpy as np
 import google.generativeai as genai
+
+import config
 from scoring import calcular_score_pergunta
+from utils import cosine_similarity, embed_texts, ensure_genai_configured, parse_json_response
 
 _SYSTEM_INSTRUCTION = (
     "Você é um auditor RIGOROSO especializado em GEO (Generative Engine Optimization) e "
@@ -23,8 +27,6 @@ _SYSTEM_INSTRUCTION = (
     "3. PRESERVAÇÃO DE CLAIMS: Nenhuma afirmação da marca deve ser omitida, inventada ou alterada."
 )
 
-_MAX_CONTEXT_CHARS = 100_000
-
 # Cache do modelo para evitar recriar a cada chamada
 _cached_model = None
 _cached_api_key = None
@@ -34,9 +36,9 @@ def _get_model(api_key: str) -> genai.GenerativeModel:
     """Retorna o modelo Gemini, configurando a API key se necessário."""
     global _cached_model, _cached_api_key
     if _cached_model is None or api_key != _cached_api_key:
-        genai.configure(api_key=api_key)
+        ensure_genai_configured(api_key)
         _cached_model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash",
+            model_name=config.GEMINI_MODEL_NAME,
             system_instruction=_SYSTEM_INSTRUCTION,
             generation_config=genai.GenerationConfig(
                 temperature=0,
@@ -57,20 +59,11 @@ def _compute_semantic_similarity(text_a: str, text_b: str) -> float:
     if not text_a.strip() or not text_b.strip():
         return 0.0
 
-    result = genai.embed_content(
-        model="models/gemini-embedding-001",
-        content=[text_a, text_b],
-    )
-    emb_a = np.array(result["embedding"][0], dtype=np.float32)
-    emb_b = np.array(result["embedding"][1], dtype=np.float32)
+    embeddings = embed_texts([text_a, text_b])
+    emb_a = np.array(embeddings[0], dtype=np.float32)
+    emb_b = np.array(embeddings[1], dtype=np.float32)
 
-    dot = np.dot(emb_a, emb_b)
-    norm_a = np.linalg.norm(emb_a)
-    norm_b = np.linalg.norm(emb_b)
-    if norm_a == 0 or norm_b == 0:
-        return 0.0
-
-    similarity = float(dot / (norm_a * norm_b))
+    similarity = cosine_similarity(emb_a, emb_b)
     # Cosseno vai de -1 a 1; clampamos em [0, 1] e convertemos para 0-100
     return max(0.0, min(similarity, 1.0)) * 100
 
@@ -89,14 +82,14 @@ def _compute_claims_rate(claims_preservados: list, claims_omitidos: list) -> flo
 
 def build_prompt(context: str, question: str, official_answer: str, rag_mode: bool = False, health=None) -> str:
     """Constrói o prompt de auditoria GEO."""
-    if len(context) > _MAX_CONTEXT_CHARS:
+    if len(context) > config.MAX_CONTEXT_CHARS:
         original_len = len(context)
-        context = context[:_MAX_CONTEXT_CHARS]
+        context = context[:config.MAX_CONTEXT_CHARS]
         print("  [AVISO] Contexto truncado para 100.000 caracteres.")
         if health is not None:
             health.context_truncated = True
             health.context_original_chars = original_len
-            health.context_used_chars = _MAX_CONTEXT_CHARS
+            health.context_used_chars = config.MAX_CONTEXT_CHARS
 
     rag_note = ""
     if rag_mode:
@@ -147,31 +140,6 @@ INSTRUÇÕES:
 }}"""
 
 
-def _parse_response(text: str) -> tuple[dict, bool]:
-    """Tenta extrair JSON da resposta do modelo.
-
-    Returns:
-        Tupla (resultado_dict, usou_fallback).
-    """
-    try:
-        return json.loads(text), False
-    except json.JSONDecodeError:
-        pass
-
-    match = re.search(r"\{[\s\S]*\}", text)
-    if match:
-        try:
-            return json.loads(match.group()), True
-        except json.JSONDecodeError:
-            pass
-
-    return {
-        "resposta_ia": text,
-        "score": -1,
-        "justificativa": "[ERRO] Não foi possível interpretar a resposta do modelo.",
-    }, True
-
-
 def evaluate_question(context: str, question: str, official_answer: str, api_key: str = "", rag=None, health=None) -> dict:
     """Envia o prompt para o Gemini e retorna o resultado parseado.
 
@@ -182,7 +150,6 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
         Dict com resposta_ia, score, justificativa e opcionalmente fontes.
     """
     if not api_key:
-        import config
         api_key = config.GEMINI_API_KEY
 
     if not api_key:
@@ -202,7 +169,7 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
     model = _get_model(api_key)
     prompt = build_prompt(context, question, official_answer, rag_mode=rag_mode, health=health)
 
-    max_retries = 3
+    max_retries = config.MAX_RETRIES
     for attempt in range(max_retries):
         try:
             response = model.generate_content(prompt)
@@ -217,7 +184,7 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
                     result["fontes"] = sources
                 return result
 
-            result, used_fallback = _parse_response(response.text)
+            result, used_fallback = parse_json_response(response.text)
             if used_fallback and health is not None:
                 health.json_parse_failures += 1
                 health.json_parse_details.append(question[:80])

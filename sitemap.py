@@ -2,13 +2,11 @@
 
 import xml.etree.ElementTree as ET
 from urllib.parse import urljoin, urlparse
+
 import requests
 from bs4 import BeautifulSoup
 
-_HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                   "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-}
+import config
 
 # Padrões de URL a excluir por padrão
 _EXCLUDE_PATTERNS = [
@@ -62,7 +60,7 @@ def _parse_sitemap_xml(content: str, base_domain: str, max_pages: int) -> list[d
             loc = sitemap_tag.find(f"{ns}loc")
             if loc is not None and loc.text:
                 try:
-                    resp = requests.get(loc.text.strip(), headers=_HEADERS, timeout=15)
+                    resp = requests.get(loc.text.strip(), headers=config.SCRAPER_HEADERS, timeout=15)
                     resp.raise_for_status()
                     child_urls = _parse_sitemap_xml(resp.text, base_domain, max_pages - len(urls))
                     urls.extend(child_urls)
@@ -105,7 +103,7 @@ def _discover_from_sitemap(base_url: str, base_domain: str, max_pages: int) -> l
     # Tenta robots.txt primeiro
     try:
         robots_url = f"{origin}/robots.txt"
-        resp = requests.get(robots_url, headers=_HEADERS, timeout=10)
+        resp = requests.get(robots_url, headers=config.SCRAPER_HEADERS, timeout=10)
         if resp.status_code == 200:
             for line in resp.text.splitlines():
                 if line.strip().lower().startswith("sitemap:"):
@@ -125,7 +123,7 @@ def _discover_from_sitemap(base_url: str, base_domain: str, max_pages: int) -> l
 
     for sitemap_url in sitemap_urls_to_try:
         try:
-            resp = requests.get(sitemap_url, headers=_HEADERS, timeout=15)
+            resp = requests.get(sitemap_url, headers=config.SCRAPER_HEADERS, timeout=15)
             if resp.status_code == 200 and "xml" in resp.headers.get("content-type", "").lower():
                 urls = _parse_sitemap_xml(resp.text, base_domain, max_pages)
                 if urls:
@@ -147,7 +145,7 @@ def _discover_from_links(base_url: str, base_domain: str, max_pages: int) -> lis
     seen = set()
 
     try:
-        resp = requests.get(base_url, headers=_HEADERS, timeout=15)
+        resp = requests.get(base_url, headers=config.SCRAPER_HEADERS, timeout=15)
         resp.raise_for_status()
     except Exception:
         return []

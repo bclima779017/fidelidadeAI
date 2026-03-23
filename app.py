@@ -6,7 +6,6 @@ import report_handler
 import scraper
 import sitemap
 import config
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from scoring import PERGUNTAS, PLACEHOLDERS, calcular_score_ponderado
 from health import EvalHealth
@@ -401,7 +400,7 @@ if avaliar:
     # Processa em paralelo (max 3 threads para respeitar rate limits)
     results_map = {}
     completed = 0
-    with ThreadPoolExecutor(max_workers=3) as executor:
+    with ThreadPoolExecutor(max_workers=config.MAX_THREADS) as executor:
         futures = {
             executor.submit(_evaluate, item): item
             for item in perguntas_preenchidas

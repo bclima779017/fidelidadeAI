@@ -10,6 +10,10 @@ import os
 import sys
 
 import numpy as np
+import google.generativeai as genai
+
+import config
+from utils import ensure_genai_configured, embed_texts, parse_json_response
 
 KNOWLEDGE_DIR = os.path.join(os.path.dirname(__file__), "knowledge")
 RAW_DIR = os.path.join(KNOWLEDGE_DIR, "raw")
@@ -88,42 +92,31 @@ def _find_pdf() -> str:
 
 def _structure_with_gemini(text: str, api_key: str) -> list[dict]:
     """Envia o texto ao Gemini para estruturação em JSON."""
-    import google.generativeai as genai
-
-    genai.configure(api_key=api_key)
+    ensure_genai_configured(api_key)
     model = genai.GenerativeModel(
-        model_name="gemini-2.5-flash",
+        model_name=config.GEMINI_MODEL_NAME,
         generation_config=genai.GenerationConfig(temperature=0, top_p=1.0, top_k=1),
     )
 
     response = model.generate_content(_STRUCTURING_PROMPT + text)
 
-    # Parse JSON da resposta
-    import re
-    raw = response.text
-    match = re.search(r"\[[\s\S]*\]", raw)
-    if match:
-        return json.loads(match.group())
-    return json.loads(raw)
+    parsed, _ = parse_json_response(response.text)
+    if isinstance(parsed, list):
+        return parsed
+    raise ValueError(f"Esperava JSON array, recebeu: {type(parsed)}")
 
 
 def _generate_embeddings(initiatives: list[dict], api_key: str) -> np.ndarray:
     """Gera embeddings para cada iniciativa (título + descrição)."""
-    import google.generativeai as genai
-
-    genai.configure(api_key=api_key)
+    ensure_genai_configured(api_key)
 
     texts = [
         f"{init['titulo']}. {init['descricao_profunda']}. {init['implementacao_humana']}"
         for init in initiatives
     ]
 
-    result = genai.embed_content(
-        model="models/gemini-embedding-001",
-        content=texts,
-    )
-
-    return np.array(result["embedding"], dtype=np.float32)
+    embeddings = embed_texts(texts)
+    return np.array(embeddings, dtype=np.float32)
 
 
 def main():
@@ -133,15 +126,7 @@ def main():
 
     api_key = args.api_key
     if not api_key:
-        try:
-            import config
-            api_key = config.GEMINI_API_KEY
-        except Exception:
-            pass
-    if not api_key:
-        from dotenv import load_dotenv
-        load_dotenv()
-        api_key = os.getenv("GEMINI_API_KEY", "")
+        api_key = config.GEMINI_API_KEY
 
     if not api_key:
         print("[ERRO] API key não fornecida. Use --api-key ou configure no .env")
