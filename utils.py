@@ -2,6 +2,7 @@
 
 import json
 import re
+import time
 
 import numpy as np
 import google.generativeai as genai
@@ -31,7 +32,10 @@ def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def embed_texts(texts: list[str] | str) -> list[list[float]]:
-    """Gera embeddings via Gemini. Aceita string única ou lista.
+    """Gera embeddings via Gemini com retry automático.
+
+    Aceita string única ou lista. Retries com backoff exponencial
+    em caso de rate limit ou erro transitório.
 
     Returns:
         Lista de embeddings (cada um é list[float]).
@@ -40,16 +44,27 @@ def embed_texts(texts: list[str] | str) -> list[list[float]]:
     if single:
         texts = [texts]
 
-    result = genai.embed_content(
-        model=config.GEMINI_EMBEDDING_MODEL,
-        content=texts,
-    )
+    for attempt in range(config.MAX_RETRIES):
+        try:
+            result = genai.embed_content(
+                model=config.GEMINI_EMBEDDING_MODEL,
+                content=texts,
+            )
 
-    emb = result["embedding"]
-    # embed_content retorna list[float] para input único, list[list[float]] para lista
-    if single and not isinstance(emb[0], list):
-        return [emb]
-    return emb
+            emb = result["embedding"]
+            # embed_content retorna list[float] para input único, list[list[float]] para lista
+            if single and not isinstance(emb[0], list):
+                return [emb]
+            return emb
+        except Exception as e:
+            error_msg = str(e).lower()
+            is_retryable = any(k in error_msg for k in ("429", "quota", "resource", "unavailable", "deadline"))
+            if attempt < config.MAX_RETRIES - 1 and is_retryable:
+                wait = 2 ** (attempt + 1)
+                print(f"  [RETRY] Embedding falhou ({e}), aguardando {wait}s...")
+                time.sleep(wait)
+            else:
+                raise
 
 
 def parse_json_response(text: str) -> tuple[dict | list, bool]:

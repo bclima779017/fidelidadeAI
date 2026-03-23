@@ -26,7 +26,8 @@ PESO_CLAIMS = 2
 
 # ── Execução ──
 MAX_RETRIES = 3
-MAX_THREADS = 3
+MAX_THREADS = 2            # Limitado para reduzir rate limits (cada thread faz ~3 chamadas API)
+EVAL_TIMEOUT = 120         # Timeout por pergunta em segundos
 
 # ── Health thresholds ──
 POOR_EXTRACTION_THRESHOLD = 500   # chars

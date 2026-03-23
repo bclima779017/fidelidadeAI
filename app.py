@@ -417,22 +417,32 @@ if avaliar:
             }
         return idx, pergunta, resposta_oficial, result, q_health
 
-    # Processa em paralelo (max 3 threads para respeitar rate limits)
+    # Processa em paralelo (max workers definido em config)
     results_map = {}
     completed = 0
+    eval_timeout = config.EVAL_TIMEOUT
     with ThreadPoolExecutor(max_workers=config.MAX_THREADS) as executor:
         futures = {
             executor.submit(_evaluate, item): item
             for item in perguntas_preenchidas
         }
-        for future in as_completed(futures):
+        for future in as_completed(futures, timeout=eval_timeout * total):
             completed += 1
             progress.progress(
                 completed / total,
                 text=f"Avaliadas {completed}/{total} perguntas...",
             )
             try:
-                idx, pergunta, resposta_oficial, result, q_health = future.result()
+                idx, pergunta, resposta_oficial, result, q_health = future.result(timeout=eval_timeout)
+            except TimeoutError:
+                item = futures[future]
+                idx, pergunta, resposta_oficial = item
+                result = {
+                    "resposta_ia": "",
+                    "score": -1,
+                    "justificativa": "[ERRO] Timeout: a API não respondeu a tempo.",
+                }
+                q_health = EvalHealth()
             except Exception as e:
                 # Safety net: se algo escapou do try/except interno
                 item = futures[future]
@@ -466,8 +476,18 @@ if avaliar:
             if result.get("hallucinations"):
                 row["Hallucinations"] = result["hallucinations"]
             results_map[idx] = row
+            # Salva resultados parciais a cada pergunta concluída
+            st.session_state.results = [
+                results_map.get(i, {
+                    "Pergunta": PERGUNTAS[i], "Resposta Oficial": respostas[i],
+                    "Resposta IA": "", "Score": -1, "Match Semântico": -1,
+                    "Taxa Claims": -1, "Score Gemini Original": -1,
+                    "Justificativa": "[PENDENTE] Avaliação em andamento...",
+                })
+                for i, _, _ in perguntas_preenchidas
+            ]
 
-    # Ordena resultados pela ordem original das perguntas
+    # Resultado final ordenado
     results = [results_map[i] for i, _, _ in perguntas_preenchidas]
 
     progress.progress(1.0, text="Concluído!")
