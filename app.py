@@ -74,13 +74,18 @@ _DEFAULTS = {
     "current_step": 0,
     "welcome_dismissed": False,
     "eval_health": None,
+    "status_msg": None,       # Mensagem de status persistente (type, text)
 }
 for key, default in _DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = default
 
 
-# --- Modal de boas-vindas ---
+# --- Modal de boas-vindas (persistido via query_params) ---
+# Usa query_params para sobreviver a refreshes e restarts do servidor
+if st.query_params.get("started") == "1":
+    st.session_state.welcome_dismissed = True
+
 @st.dialog("Bem-vindo à Auditoria GEO — Kípiai", width="large")
 def show_welcome():
     welcome_path = os.path.join(os.path.dirname(__file__), "content", "welcome.md")
@@ -91,6 +96,7 @@ def show_welcome():
         st.markdown("Bem-vindo! Siga os passos na interface para auditar a fidelidade do seu site.")
     if st.button("Entendido! Vamos começar", type="primary", use_container_width=True):
         st.session_state.welcome_dismissed = True
+        st.query_params["started"] = "1"
         st.rerun()
 
 
@@ -181,6 +187,7 @@ if url_changed and has_context:
             st.session_state[key] = "" if key == "contexto" else None
         st.session_state.last_url = ""
         st.session_state.current_step = 0
+        st.session_state.status_msg = None
         st.rerun()
 
 modo = st.radio(
@@ -207,7 +214,7 @@ if modo == "Página única":
                 st.session_state.eval_health = health
                 st.session_state.last_url = url.strip()
                 st.session_state.current_step = 4  # Pula para respostas (sem seleção/chunk)
-                st.success(f"Contexto extraído: {len(st.session_state.contexto):,} caracteres")
+                st.session_state.status_msg = ("success", f"Contexto extraído: {len(st.session_state.contexto):,} caracteres")
             except Exception as e:
                 st.error(f"Erro ao acessar o site: {e}")
 
@@ -232,7 +239,7 @@ else:
                     st.session_state.discovered_urls = urls
                     st.session_state.last_url = url.strip()
                     st.session_state.current_step = max(st.session_state.current_step, 1)
-                    st.success(f"{len(urls)} páginas descobertas")
+                    st.session_state.status_msg = ("success", f"{len(urls)} páginas descobertas")
                 else:
                     st.warning("Nenhuma página encontrada. Verifique a URL.")
             except Exception as e:
@@ -285,7 +292,7 @@ else:
                 total_chars = sum(p["char_count"] for p in pages)
                 progress_bar.progress(1.0, text="Extração concluída!")
                 st.session_state.current_step = max(st.session_state.current_step, 3)
-                st.success(f"{len(pages)} páginas extraídas — {total_chars:,} caracteres no total")
+                st.session_state.status_msg = ("success", f"{len(pages)} páginas extraídas — {total_chars:,} caracteres no total")
 
                 # Indexação RAG automática se API key disponível
                 if api_key and pages:
@@ -302,7 +309,7 @@ else:
                         st.session_state.rag = rag_instance
                         rag_progress.progress(1.0, text="Indexação concluída!")
                         st.session_state.current_step = max(st.session_state.current_step, 4)
-                        st.success(f"RAG indexado: {n_chunks} chunks prontos para retrieval semântico")
+                        st.session_state.status_msg = ("success", f"RAG indexado: {n_chunks} chunks prontos para retrieval semântico")
                     except Exception as e:
                         st.warning(f"Falha na indexação RAG: {e}. A auditoria usará texto agregado.")
                         st.session_state.rag = None
@@ -342,6 +349,11 @@ def _rag_preview():
                 st.divider()
 
 _rag_preview()
+
+# --- Mensagem de status persistente ---
+if st.session_state.status_msg:
+    _msg_type, _msg_text = st.session_state.status_msg
+    getattr(st, _msg_type, st.info)(_msg_text)
 
 # --- Seção 2: Respostas do especialista ---
 st.header("2. Respostas do Especialista")
@@ -591,6 +603,7 @@ if st.session_state.get("results"):
 
                     if claims_omit and api_key:
                         btn_key = f"ctx_{sug['id']}_{hash(pergunta) % 10000}"
+                        state_key = f"_ctx_result_{btn_key}"
                         if st.button(f"Contextualizar para esta marca", key=btn_key):
                             with st.spinner("Adaptando sugestão para a marca..."):
                                 ctx = suggestions.contextualize_suggestion(
@@ -599,6 +612,10 @@ if st.session_state.get("results"):
                                     contexto_resumo=st.session_state.contexto[:3000],
                                     api_key=api_key,
                                 )
+                            st.session_state[state_key] = ctx
+                        # Renderiza resultado persistido
+                        if state_key in st.session_state:
+                            ctx = st.session_state[state_key]
                             st.markdown(f"**Sugestão adaptada:** {ctx.get('sugestao_contextualizada', '')}")
                             if ctx.get("exemplo_antes"):
                                 st.markdown(f"**Antes:** {ctx['exemplo_antes']}")
@@ -617,10 +634,22 @@ if st.session_state.get("results"):
             "chunks_per_page": stats["chunks_per_page"],
         }
 
-    # Download Excel
-    filepath = report_handler.generate_report(
-        results, rag_metadata=rag_metadata, score_ponderado=score_ponderado,
-        suggestions_data=suggestions_map if suggestions_map else None,
+    # Download Excel (cacheado para não regenerar a cada rerun)
+    @st.cache_data(show_spinner=False)
+    def _generate_cached_report(_results_tuple, _rag_metadata, _score_ponderado, _suggestions_keys):
+        return report_handler.generate_report(
+            list(_results_tuple), rag_metadata=_rag_metadata, score_ponderado=_score_ponderado,
+            suggestions_data=suggestions_map if suggestions_map else None,
+        )
+
+    # Converte results para tuple para ser hashable pelo cache
+    _results_hashable = tuple(
+        tuple(sorted((k, str(v)) for k, v in r.items())) for r in results
+    )
+    _sug_keys = tuple(sorted(suggestions_map.keys())) if suggestions_map else ()
+
+    filepath = _generate_cached_report(
+        _results_hashable, rag_metadata, score_ponderado, _sug_keys,
     )
     with open(filepath, "rb") as f:
         st.download_button(
