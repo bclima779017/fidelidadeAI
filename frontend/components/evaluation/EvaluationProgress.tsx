@@ -29,35 +29,30 @@ const HEARTBEAT_MESSAGES = [
 function useHeartbeat(isActive: boolean) {
   const [elapsed, setElapsed] = useState(0);
   const [messageIndex, setMessageIndex] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Timer único que gerencia ambos: elapsed + mensagem
   useEffect(() => {
     if (!isActive) {
       setElapsed(0);
       setMessageIndex(0);
-      if (intervalRef.current) clearInterval(intervalRef.current);
       return;
     }
 
     setElapsed(0);
     setMessageIndex(0);
 
-    intervalRef.current = setInterval(() => {
+    const timerInterval = setInterval(() => {
       setElapsed((prev) => prev + 1);
     }, 1000);
 
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [isActive]);
-
-  // Troca mensagem a cada 4 segundos
-  useEffect(() => {
-    if (!isActive) return;
     const msgInterval = setInterval(() => {
       setMessageIndex((prev) => (prev + 1) % HEARTBEAT_MESSAGES.length);
     }, 4000);
-    return () => clearInterval(msgInterval);
+
+    return () => {
+      clearInterval(timerInterval);
+      clearInterval(msgInterval);
+    };
   }, [isActive]);
 
   return {
@@ -130,6 +125,21 @@ export function EvaluationProgress() {
     abortRef.current = controller;
   }, [evaluationStatus]);
 
+  const handleCancel = () => {
+    if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
+    startedRef.current = false;
+    // Se já tem resultados parciais, mostra o que tem; senão, reseta
+    const currentResults = useAuditStore.getState().results.filter(Boolean);
+    if (currentResults.length > 0) {
+      useAuditStore.getState().setEvaluationStatus("done");
+      useAuditStore.getState().setCurrentStep(4);
+      toast.info(`Avaliacao cancelada. ${currentResults.length} de ${totalQuestions} perguntas avaliadas.`, { duration: 4000 });
+    } else {
+      useAuditStore.getState().resetEvaluation();
+      toast.info("Avaliacao cancelada.", { duration: 3000 });
+    }
+  };
+
   const handleRetry = () => {
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
     startedRef.current = false;
@@ -170,7 +180,7 @@ export function EvaluationProgress() {
           <ProgressBar value={isDone ? 100 : progressPercent} height="lg" />
         </div>
 
-        {/* Heartbeat: mensagem rotativa animada */}
+        {/* Heartbeat + cancel */}
         {isRunning && !isDone && (
           <div className="flex items-center gap-3 bg-kipiai-blue/5 dark:bg-kipiai-blue/10 rounded-lg px-4 py-2.5">
             {/* Spinner pulsante */}
@@ -193,6 +203,13 @@ export function EvaluationProgress() {
                 {heartbeat.message}
               </motion.span>
             </AnimatePresence>
+            {/* Cancel button */}
+            <button
+              onClick={handleCancel}
+              className="ml-auto flex-shrink-0 text-xs text-kipiai-gray hover:text-kipiai-red transition-colors px-2 py-1 rounded hover:bg-red-50 dark:hover:bg-red-900/20"
+            >
+              Cancelar
+            </button>
           </div>
         )}
 

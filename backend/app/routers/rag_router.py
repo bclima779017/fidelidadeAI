@@ -7,7 +7,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 from app.schemas import RAGIndexRequest, RAGIndexResponse, RAGStatsResponse
-from app.routers.evaluate import set_rag_instance, get_rag_instance
+from app.routers.evaluate import set_rag_instance, get_rag_instance, resolve_api_key
 import config
 import security
 from rag import AuditRAG
@@ -19,17 +19,6 @@ router = APIRouter(prefix="/api/rag", tags=["rag"])
 limiter = Limiter(key_func=get_remote_address)
 
 
-def _resolve_api_key(request_key: str | None, auth_header: str | None) -> str:
-    """Resolve a API key."""
-    if auth_header and auth_header.startswith("Bearer "):
-        token = auth_header[7:].strip()
-        if token:
-            return token
-    if request_key:
-        return request_key
-    return config.GEMINI_API_KEY
-
-
 @router.post("/index", response_model=RAGIndexResponse)
 @limiter.limit("3/minute")
 async def index_content(
@@ -38,7 +27,7 @@ async def index_content(
     authorization: str | None = Header(None),
 ) -> RAGIndexResponse:
     """Indexa conteúdo de múltiplas páginas para retrieval RAG."""
-    api_key = _resolve_api_key(body.api_key, authorization)
+    api_key = resolve_api_key(body.api_key, authorization)
     if not api_key:
         raise HTTPException(status_code=401, detail="API key não configurada.")
 

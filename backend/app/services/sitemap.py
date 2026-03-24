@@ -42,8 +42,11 @@ def _should_exclude(url: str, exclude_patterns: list[str] | None = None) -> bool
     return any(p in url_lower for p in patterns)
 
 
-def _parse_sitemap_xml(content: str, base_domain: str, max_pages: int) -> list[dict]:
-    """Parseia um sitemap.xml e retorna lista de URLs."""
+def _parse_sitemap_xml(content: str, base_domain: str, max_pages: int, _depth: int = 0) -> list[dict]:
+    """Parseia um sitemap.xml e retorna lista de URLs (max depth 3)."""
+    if _depth > 3:
+        logger.warning("Sitemap recursion depth limit (3) atingido")
+        return []
     urls = []
     try:
         root = fromstring(content)
@@ -65,7 +68,7 @@ def _parse_sitemap_xml(content: str, base_domain: str, max_pages: int) -> list[d
                 try:
                     resp = requests.get(loc.text.strip(), headers=config.SCRAPER_HEADERS, timeout=15)
                     resp.raise_for_status()
-                    child_urls = _parse_sitemap_xml(resp.text, base_domain, max_pages - len(urls))
+                    child_urls = _parse_sitemap_xml(resp.text, base_domain, max_pages - len(urls), _depth + 1)
                     urls.extend(child_urls)
                 except (requests.RequestException, XMLParseError) as e:
                     logger.debug("Falha ao buscar sitemap child %s: %s", loc.text, e)

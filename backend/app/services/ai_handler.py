@@ -178,10 +178,23 @@ async def evaluate_question_async(
                 health.json_parse_failures += 1
                 health.json_parse_details.append(question[:80])
 
-            # Scoring composto (async — embedding em paralelo)
-            resposta_ia = result.get("resposta_ia", "")
-            claims_pres = result.get("claims_preservados", [])
-            claims_omit = result.get("claims_omitidos", [])
+            # Validar e normalizar campos obrigatórios
+            if not isinstance(result, dict) or "error" in result:
+                logger.warning("Resposta Gemini não parseável para: %s", question[:80])
+                result = {
+                    "resposta_ia": response_text[:500] if response_text else "",
+                    "score": -1,
+                    "justificativa": "[ERRO] Resposta do modelo em formato inesperado.",
+                }
+
+            # Garantir tipos corretos (Gemini pode retornar null)
+            resposta_ia = result.get("resposta_ia") or ""
+            claims_pres = result.get("claims_preservados") or []
+            claims_omit = result.get("claims_omitidos") or []
+            if not isinstance(claims_pres, list):
+                claims_pres = []
+            if not isinstance(claims_omit, list):
+                claims_omit = []
 
             if resposta_ia and result.get("score", -1) >= 0:
                 try:

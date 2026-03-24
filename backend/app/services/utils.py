@@ -124,6 +124,7 @@ def parse_json_response(text: str) -> tuple[dict | list, bool]:
         except json.JSONDecodeError:
             pass
 
+    logger.warning("JSON parse falhou completamente. Texto (100 chars): %s", text[:100])
     return {"raw": text, "error": "parse_failed"}, True
 
 

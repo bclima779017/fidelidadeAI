@@ -3,10 +3,11 @@
 import asyncio
 import json
 import logging
+import threading
 from dataclasses import asdict
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from slowapi import Limiter
 from slowapi.util import get_remote_address
@@ -23,20 +24,24 @@ logger = logging.getLogger("kipiai.evaluate")
 router = APIRouter(prefix="/api", tags=["evaluate"])
 limiter = Limiter(key_func=get_remote_address)
 
-# RAG instance global
+# RAG instance global (thread-safe)
+_rag_lock = threading.Lock()
 _current_rag = None
 
 
 def set_rag_instance(rag):
     global _current_rag
-    _current_rag = rag
+    with _rag_lock:
+        _current_rag = rag
 
 
 def get_rag_instance():
-    return _current_rag
+    with _rag_lock:
+        return _current_rag
 
 
-def _resolve_api_key(request_key: str | None, auth_header: str | None) -> str:
+def resolve_api_key(request_key: str | None, auth_header: str | None) -> str:
+    """Resolve API key: header Authorization > body > env var. Compartilhado entre routers."""
     if auth_header and auth_header.startswith("Bearer "):
         token = auth_header[7:].strip()
         if token:
@@ -88,16 +93,19 @@ async def _evaluate_stream(
     queue: asyncio.Queue = asyncio.Queue()
 
     async def _evaluate_one(i: int, q):
-        """Avalia uma pergunta e coloca o resultado na queue."""
+        """Avalia uma pergunta e coloca o resultado na queue (com timeout)."""
         question_text = security.sanitize_user_input(q.question)
         official_answer = security.sanitize_user_input(q.official_answer)
 
         async with sem:
             try:
-                result = await ai_handler.evaluate_question_async(
-                    context, question_text, official_answer, api_key,
-                    rag=rag if rag_active else None,
-                    health=health,
+                result = await asyncio.wait_for(
+                    ai_handler.evaluate_question_async(
+                        context, question_text, official_answer, api_key,
+                        rag=rag if rag_active else None,
+                        health=health,
+                    ),
+                    timeout=config.EVAL_TIMEOUT,
                 )
                 eval_result = EvaluateResult(
                     question=question_text,
@@ -115,6 +123,9 @@ async def _evaluate_stream(
                     context_truncated=result.get("context_truncated", False),
                 )
                 await queue.put(("result", i, eval_result))
+            except asyncio.TimeoutError:
+                logger.error("Timeout na pergunta %d após %ds", i + 1, config.EVAL_TIMEOUT)
+                await queue.put(("error", i, f"Timeout: pergunta {i + 1} excedeu {config.EVAL_TIMEOUT}s"))
             except Exception as e:
                 safe_msg = security.safe_error_message(e)
                 logger.error("Erro na pergunta %d: %s", i + 1, e)
@@ -175,17 +186,12 @@ async def evaluate_questions(
     authorization: str | None = Header(None),
 ) -> StreamingResponse:
     """Avalia perguntas via SSE concorrente."""
-    api_key = _resolve_api_key(body.api_key, authorization)
+    api_key = resolve_api_key(body.api_key, authorization)
 
     if not api_key:
-        error_event = json.dumps({
-            "type": "error",
-            "message": "API key não configurada.",
-        }, ensure_ascii=False)
-        return StreamingResponse(
-            iter([f"data: {error_event}\n\n"]),
-            media_type="text/event-stream",
+        raise HTTPException(
             status_code=401,
+            detail="API key não configurada. Informe via header Authorization ou variável de ambiente GEMINI_API_KEY.",
         )
 
     return StreamingResponse(

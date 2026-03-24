@@ -8,7 +8,7 @@ interface BadgeProps {
 }
 
 function getScoreStyle(score: number): string {
-  if (score < 0) return "bg-gray-100 text-kipiai-gray";
+  if (!Number.isFinite(score) || score < 0) return "bg-gray-100 text-kipiai-gray";
   if (score >= 70) return "bg-green-100 text-kipiai-green";
   if (score >= 50) return "bg-yellow-100 text-kipiai-yellow";
   return "bg-red-100 text-kipiai-red";
@@ -21,7 +21,7 @@ const sizeStyles = {
 };
 
 export function Badge({ score, size = "md" }: BadgeProps) {
-  const label = score < 0 ? "Erro" : `${score}`;
+  const label = !Number.isFinite(score) || score < 0 ? "Erro" : `${score}`;
 
   return (
     <span

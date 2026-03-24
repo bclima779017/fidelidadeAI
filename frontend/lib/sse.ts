@@ -58,7 +58,7 @@ export function connectEvaluation(
     ...(params.apiKey ? { api_key: params.apiKey } : {}),
   };
 
-  console.log("[SSE] Iniciando avaliação:", {
+  if (process.env.NODE_ENV === "development") console.log("[SSE] Iniciando avaliação:", {
     contextLen: params.context.length,
     questionsCount: questions.length,
     url: `${BASE_URL}/api/evaluate`,
@@ -66,14 +66,14 @@ export function connectEvaluation(
 
   // Timeout global para a conexão SSE
   const timeoutId = setTimeout(() => {
-    console.error("[SSE] Timeout global atingido");
+    if (process.env.NODE_ENV === "development") console.error("[SSE] Timeout global atingido");
     controller.abort();
     callbacks.onError("Timeout: a avaliação excedeu o tempo limite. Tente novamente.");
   }, SSE_TIMEOUT_MS);
 
   (async () => {
     try {
-      console.log("[SSE] Enviando fetch...");
+      if (process.env.NODE_ENV === "development") console.log("[SSE] Enviando fetch...");
       const response = await fetch(`${BASE_URL}/api/evaluate`, {
         method: "POST",
         headers: {
@@ -84,7 +84,7 @@ export function connectEvaluation(
         signal: controller.signal,
       });
 
-      console.log("[SSE] Response status:", response.status);
+      if (process.env.NODE_ENV === "development") console.log("[SSE] Response status:", response.status);
 
       if (!response.ok) {
         clearTimeout(timeoutId);
@@ -95,7 +95,7 @@ export function connectEvaluation(
         } catch {
           // keep default
         }
-        console.error("[SSE] Erro HTTP:", errorMsg);
+        if (process.env.NODE_ENV === "development") console.error("[SSE] Erro HTTP:", errorMsg);
         callbacks.onError(errorMsg);
         return;
       }
@@ -107,7 +107,7 @@ export function connectEvaluation(
         return;
       }
 
-      console.log("[SSE] Stream conectado, lendo eventos...");
+      if (process.env.NODE_ENV === "development") console.log("[SSE] Stream conectado, lendo eventos...");
       const decoder = new TextDecoder();
       let buffer = "";
       let parseErrors = 0;
@@ -116,7 +116,7 @@ export function connectEvaluation(
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
-            console.log("[SSE] Stream finalizado");
+            if (process.env.NODE_ENV === "development") console.log("[SSE] Stream finalizado");
             break;
           }
 
@@ -136,7 +136,7 @@ export function connectEvaluation(
             } else if (line === "" && eventData) {
               try {
                 const parsed = JSON.parse(eventData);
-                console.log("[SSE] Evento:", parsed.type, parsed.current || "");
+                if (process.env.NODE_ENV === "development") console.log("[SSE] Evento:", parsed.type, parsed.current || "");
 
                 switch (eventType || parsed.type) {
                   case "progress":
@@ -173,7 +173,7 @@ export function connectEvaluation(
                 }
               } catch {
                 parseErrors++;
-                console.warn("[SSE] Parse error #" + parseErrors, eventData.substring(0, 100));
+                if (process.env.NODE_ENV === "development") console.warn("[SSE] Parse error #" + parseErrors, eventData.substring(0, 100));
                 if (parseErrors >= 5) {
                   clearTimeout(timeoutId);
                   callbacks.onError("Erros repetidos ao processar dados do servidor.");
@@ -192,11 +192,11 @@ export function connectEvaluation(
     } catch (error) {
       clearTimeout(timeoutId);
       if (error instanceof DOMException && error.name === "AbortError") {
-        console.log("[SSE] Conexão abortada (esperado)");
+        if (process.env.NODE_ENV === "development") console.log("[SSE] Conexão abortada (esperado)");
         return;
       }
       const msg = error instanceof Error ? error.message : "Erro de conexao";
-      console.error("[SSE] Erro fatal:", msg);
+      if (process.env.NODE_ENV === "development") console.error("[SSE] Erro fatal:", msg);
       callbacks.onError(msg);
     }
   })();
