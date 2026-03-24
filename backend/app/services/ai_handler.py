@@ -1,15 +1,18 @@
-"""Prompt de auditoria GEO e chamada ao Gemini para avaliação de fidelidade."""
+"""Prompt de auditoria GEO e chamada ao Gemini para avaliação de fidelidade.
 
+Usa google-genai SDK com async nativo para performance.
+"""
+
+import asyncio
 import logging
-import threading
-import time
 
 import numpy as np
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 import config
 from scoring import calcular_score_pergunta
-from utils import cosine_similarity, embed_texts, ensure_genai_configured, parse_json_response
+from utils import cosine_similarity, embed_texts_async, get_genai_client, parse_json_response
 
 logger = logging.getLogger("kipiai.ai_handler")
 
@@ -31,41 +34,13 @@ _SYSTEM_INSTRUCTION = (
     "3. PRESERVAÇÃO DE CLAIMS: Nenhuma afirmação da marca deve ser omitida, inventada ou alterada."
 )
 
-# Thread-safe model cache
-_model_lock = threading.Lock()
-_cached_model = None
-_cached_api_key = None
 
-
-def _get_model(api_key: str) -> genai.GenerativeModel:
-    """Retorna o modelo Gemini, configurando a API key se necessário (thread-safe)."""
-    global _cached_model, _cached_api_key
-    with _model_lock:
-        if _cached_model is None or api_key != _cached_api_key:
-            ensure_genai_configured(api_key)
-            _cached_model = genai.GenerativeModel(
-                model_name=config.GEMINI_MODEL_NAME,
-                system_instruction=_SYSTEM_INSTRUCTION,
-                generation_config=genai.GenerationConfig(
-                    temperature=0,
-                    top_p=1.0,
-                    top_k=1,
-                ),
-            )
-            _cached_api_key = api_key
-        return _cached_model
-
-
-def _compute_semantic_similarity(text_a: str, text_b: str) -> float:
-    """Calcula similaridade semântica entre dois textos via embeddings Gemini.
-
-    Returns:
-        Percentual de match (0-100).
-    """
+async def _compute_semantic_similarity_async(api_key: str, text_a: str, text_b: str) -> float:
+    """Calcula similaridade semântica via embeddings Gemini (async)."""
     if not text_a.strip() or not text_b.strip():
         return 0.0
 
-    embeddings = embed_texts([text_a, text_b])
+    embeddings = await embed_texts_async(api_key, [text_a, text_b])
     emb_a = np.array(embeddings[0], dtype=np.float32)
     emb_b = np.array(embeddings[1], dtype=np.float32)
 
@@ -74,11 +49,7 @@ def _compute_semantic_similarity(text_a: str, text_b: str) -> float:
 
 
 def _compute_claims_rate(claims_preservados: list, claims_omitidos: list) -> float:
-    """Calcula a taxa de atingimento de claims.
-
-    Returns:
-        Percentual de claims atingidos (0-100). Retorna 0 se não há claims.
-    """
+    """Calcula a taxa de atingimento de claims (0-100)."""
     total = len(claims_preservados) + len(claims_omitidos)
     if total == 0:
         return 0.0
@@ -86,11 +57,7 @@ def _compute_claims_rate(claims_preservados: list, claims_omitidos: list) -> flo
 
 
 def build_prompt(context: str, question: str, official_answer: str, rag_mode: bool = False, health=None) -> tuple[str, bool]:
-    """Constrói o prompt de auditoria GEO.
-
-    Returns:
-        Tuple (prompt_text, context_was_truncated).
-    """
+    """Constrói o prompt de auditoria GEO. Retorna (prompt, context_truncated)."""
     context_truncated = False
     if len(context) > config.MAX_CONTEXT_CHARS:
         original_len = len(context)
@@ -131,14 +98,7 @@ INSTRUÇÕES:
    a) Claims da resposta oficial que FORAM preservados na sua resposta
    b) Claims da resposta oficial que foram OMITIDOS ou generalizados
    c) Informações na sua resposta que NÃO constam no contexto original (hallucinations)
-4. Atribua um score de 0 a 100 seguindo estes critérios RIGOROSOS:
-   - 95-100: TODOS os claims preservados LITERALMENTE, incluindo dados quantitativos, nomes próprios, certificações. NENHUMA omissão, nenhuma generalização. Score excepcional e raro.
-   - 85-94: Todos os claims principais preservados com dados quantitativos corretos, mas com reformulações menores que NÃO perdem informação factual.
-   - 70-84: Claims principais presentes mas com omissões de detalhes secundários (ex: lista incompleta de serviços, dados numéricos parciais).
-   - 50-69: Claims principais presentes mas com omissões significativas, generalizações que perdem especificidade, ou dados quantitativos ausentes.
-   - 30-49: Erros factuais, claims inventados não presentes no contexto, ou omissões de claims centrais da marca.
-   - 0-29: Resposta incorreta, contraditória ao contexto ou predominantemente alucinada.
-
+4. Atribua um score de 0 a 100 seguindo critérios RIGOROSOS.
 5. Responda EXCLUSIVAMENTE no formato JSON abaixo, sem texto adicional:
 
 {{
@@ -147,62 +107,66 @@ INSTRUÇÕES:
   "claims_preservados": ["claim 1", "claim 2"],
   "claims_omitidos": ["claim omitido 1"],
   "hallucinations": ["informação inventada 1 (se houver)"],
-  "justificativa": "Explicação concisa do score, citando claims preservados ou perdidos"
+  "justificativa": "Explicação concisa do score"
 }}"""
 
     return prompt, context_truncated
 
 
-def evaluate_question(context: str, question: str, official_answer: str, api_key: str = "", rag=None, health=None) -> dict:
-    """Envia o prompt para o Gemini e retorna o resultado parseado.
-
-    Se api_key não for fornecida, tenta usar a do config.
-    Se rag (AuditRAG) for fornecido, usa retrieval semântico como contexto.
+async def evaluate_question_async(
+    context: str,
+    question: str,
+    official_answer: str,
+    api_key: str,
+    rag=None,
+    health=None,
+) -> dict:
+    """Avalia uma pergunta via Gemini (async nativo).
 
     Returns:
-        Dict com resposta_ia, score, justificativa e opcionalmente fontes.
+        Dict com resposta_ia, score, justificativa, etc.
     """
     if not api_key:
         api_key = config.GEMINI_API_KEY
-
     if not api_key:
-        return {
-            "resposta_ia": "",
-            "score": -1,
-            "justificativa": "[ERRO] Chave da API Gemini não configurada.",
-        }
+        return {"resposta_ia": "", "score": -1, "justificativa": "[ERRO] API key não configurada."}
 
-    # Se RAG disponível, usa retrieval semântico
+    # RAG retrieval (sync, CPU-bound)
     sources = []
     rag_mode = False
-    if rag is not None and rag.is_ready:
+    if rag is not None and hasattr(rag, "is_ready") and rag.is_ready:
         try:
             context, sources = rag.retrieve(question)
             rag_mode = True
-        except (ConnectionError, TimeoutError, ValueError) as e:
+        except Exception as e:
             logger.warning("Falha no retrieval RAG (%s), usando contexto agregado.", e)
             if health is not None:
                 health.total_retries += 1
-                health.retry_details.append({"question": question[:80], "attempt": 0, "reason": "rag_retrieve_error", "wait_s": 0})
 
-    model = _get_model(api_key)
+    client = get_genai_client(api_key)
     prompt, context_truncated = build_prompt(context, question, official_answer, rag_mode=rag_mode, health=health)
 
-    max_retries = config.MAX_RETRIES
-    for attempt in range(max_retries):
+    for attempt in range(config.MAX_RETRIES):
         try:
-            response = model.generate_content(prompt)
+            # Chamada Gemini async nativa (sem to_thread!)
+            response = await client.aio.models.generate_content(
+                model=config.GEMINI_MODEL_NAME,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=_SYSTEM_INSTRUCTION,
+                    temperature=0,
+                    top_p=1.0,
+                    top_k=1,
+                ),
+            )
 
-            try:
-                response_text = response.text
-            except (ValueError, AttributeError):
-                response_text = None
+            response_text = response.text if response.text else None
 
             if not response_text:
                 result = {
                     "resposta_ia": "",
                     "score": -1,
-                    "justificativa": "[BLOQUEADO] Resposta filtrada pelo modelo (safety filter).",
+                    "justificativa": "[BLOQUEADO] Resposta filtrada (safety filter).",
                     "context_truncated": context_truncated,
                 }
                 if sources:
@@ -214,15 +178,17 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
                 health.json_parse_failures += 1
                 health.json_parse_details.append(question[:80])
 
-            # --- Novo scoring composto ---
+            # Scoring composto (async — embedding em paralelo)
             resposta_ia = result.get("resposta_ia", "")
             claims_pres = result.get("claims_preservados", [])
             claims_omit = result.get("claims_omitidos", [])
 
             if resposta_ia and result.get("score", -1) >= 0:
                 try:
-                    match_semantico = _compute_semantic_similarity(official_answer, resposta_ia)
-                except (ConnectionError, TimeoutError, ValueError):
+                    match_semantico = await _compute_semantic_similarity_async(
+                        api_key, official_answer, resposta_ia
+                    )
+                except Exception:
                     match_semantico = 0.0
 
                 taxa_claims = _compute_claims_rate(claims_pres, claims_omit)
@@ -241,30 +207,47 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
         except Exception as e:
             error_msg = str(e).lower()
             is_rate_limit = any(k in error_msg for k in ("quota", "429", "resource"))
-            if attempt < max_retries - 1:
+            if attempt < config.MAX_RETRIES - 1:
                 wait = 2 ** (attempt + 1)
-                if is_rate_limit:
-                    logger.warning("Rate limit Gemini, aguardando %ds...", wait)
-                else:
-                    logger.warning("Erro Gemini (%s), tentando novamente em %ds...", e, wait)
+                logger.warning("Gemini %s, retry em %ds...", "rate limit" if is_rate_limit else f"erro ({e})", wait)
                 if health is not None:
                     health.total_retries += 1
                     health.retry_details.append({
-                        "question": question[:80],
-                        "attempt": attempt + 1,
-                        "reason": "rate_limit" if is_rate_limit else "other",
-                        "wait_s": wait,
+                        "question": question[:80], "attempt": attempt + 1,
+                        "reason": "rate_limit" if is_rate_limit else "other", "wait_s": wait,
                     })
-                time.sleep(wait)
+                await asyncio.sleep(wait)  # async sleep, não bloqueia!
             else:
-                safe_msg = str(e)[:200]
-                logger.error("Falha após %d tentativas: %s", max_retries, safe_msg)
+                logger.error("Falha após %d tentativas: %s", config.MAX_RETRIES, str(e)[:200])
                 result = {
-                    "resposta_ia": "",
-                    "score": -1,
-                    "justificativa": f"[ERRO] Falha após {max_retries} tentativas.",
+                    "resposta_ia": "", "score": -1,
+                    "justificativa": f"[ERRO] Falha após {config.MAX_RETRIES} tentativas.",
                     "context_truncated": context_truncated,
                 }
                 if sources:
                     result["fontes"] = sources
                 return result
+
+
+# ── Compat: função síncrona para código legado (Streamlit) ──
+
+def evaluate_question(context: str, question: str, official_answer: str, api_key: str = "", rag=None, health=None) -> dict:
+    """Wrapper sync para evaluate_question_async."""
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            import concurrent.futures
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(
+                    asyncio.run,
+                    evaluate_question_async(context, question, official_answer, api_key, rag, health)
+                )
+                return future.result()
+        else:
+            return asyncio.run(
+                evaluate_question_async(context, question, official_answer, api_key, rag, health)
+            )
+    except RuntimeError:
+        return asyncio.run(
+            evaluate_question_async(context, question, official_answer, api_key, rag, health)
+        )

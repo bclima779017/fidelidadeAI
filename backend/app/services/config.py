@@ -8,7 +8,11 @@ load_dotenv()
 # ── API ──
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 GEMINI_MODEL_NAME = "gemini-2.5-flash"
-GEMINI_EMBEDDING_MODEL = "models/gemini-embedding-001"
+GEMINI_EMBEDDING_MODEL = "gemini-embedding-001"
+
+# ── Concorrência async ──
+MAX_CONCURRENT_EXTRACTIONS = 8    # Páginas extraídas em paralelo
+MAX_CONCURRENT_GEMINI = 3         # Chamadas Gemini simultâneas
 
 # ── Limites de contexto ──
 MAX_CONTEXT_CHARS = 100_000

@@ -1,6 +1,5 @@
 """Router para descoberta de URLs via sitemap e extração multi-página."""
 
-import asyncio
 import json
 import logging
 from typing import AsyncGenerator
@@ -21,7 +20,6 @@ import security
 logger = logging.getLogger("kipiai.sitemap")
 
 router = APIRouter(prefix="/api", tags=["sitemap"])
-
 limiter = Limiter(key_func=get_remote_address)
 
 
@@ -33,13 +31,9 @@ async def discover_urls(request: Request, body: SitemapRequest) -> SitemapRespon
         url = security.validate_url(body.url)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=security.safe_error_message(e))
-
     try:
         urls = sitemap_service.discover_urls(url, max_pages=body.max_pages)
-        return SitemapResponse(
-            urls=[UrlInfo(**u) for u in urls],
-            total=len(urls),
-        )
+        return SitemapResponse(urls=[UrlInfo(**u) for u in urls], total=len(urls))
     except Exception as e:
         logger.error("Erro ao descobrir URLs de %s: %s", body.url[:80], e)
         raise HTTPException(status_code=500, detail=security.safe_error_message(e))
@@ -48,89 +42,88 @@ async def discover_urls(request: Request, body: SitemapRequest) -> SitemapRespon
 @router.post("/extract/multi", response_model=MultiExtractResponse)
 @limiter.limit("5/minute")
 async def extract_multi(request: Request, body: MultiExtractRequest) -> MultiExtractResponse:
-    """Extrai conteúdo de múltiplas URLs (resposta única)."""
-    validated_urls = []
-    for url in body.urls:
-        try:
-            validated_urls.append(security.validate_url(url))
-        except ValueError:
-            logger.warning("URL inválida ignorada: %s", url[:80])
-            continue
-
+    """Extrai conteúdo de múltiplas URLs (resposta única, concorrente)."""
+    validated_urls = _validate_urls(body.urls)
     if not validated_urls:
         raise HTTPException(status_code=400, detail="Nenhuma URL válida informada.")
 
-    try:
-        pages = scraper.extract_multi_page_content(validated_urls)
-        return MultiExtractResponse(
-            pages=[
-                ExtractResponse(url=p["url"], title=p["title"], content=p["content"], char_count=p["char_count"])
-                for p in pages
-            ],
-            total_extracted=len(pages),
-            total_requested=len(validated_urls),
-        )
-    except Exception as e:
-        logger.error("Erro na extração multi-página: %s", e)
-        raise HTTPException(status_code=500, detail=security.safe_error_message(e))
+    pages = await scraper.extract_multi_page_async(validated_urls)
+    return MultiExtractResponse(
+        pages=[ExtractResponse(url=p["url"], title=p["title"], content=p["content"], char_count=p["char_count"]) for p in pages],
+        total_extracted=len(pages),
+        total_requested=len(validated_urls),
+    )
 
 
-async def _extract_stream(urls: list[str]) -> AsyncGenerator[str, None]:
-    """Gera eventos SSE para extração página a página."""
+async def _extract_stream_sse(urls: list[str]) -> AsyncGenerator[str, None]:
+    """Gera eventos SSE para extração concorrente com progresso."""
     total = len(urls)
-    extracted_pages = []
+    extracted_pages: list[dict] = []
+    completed = 0
 
-    for i, url in enumerate(urls):
-        # Evento: extraindo
-        yield f"data: {json.dumps({'type': 'extracting', 'current': i + 1, 'total': total, 'url': url[:120]}, ensure_ascii=False)}\n\n"
+    async def on_progress(current: int, total_count: int, url: str, status: str, page: dict | None):
+        nonlocal completed
+        completed += 1
+        # Armazena página extraída
+        if status == "extracted" and page:
+            extracted_pages.append(page)
 
-        try:
-            page = await asyncio.to_thread(scraper._extract_single_page, url)
-            if page["content"].strip():
-                extracted_pages.append(page)
-                yield f"data: {json.dumps({'type': 'extracted', 'current': i + 1, 'total': total, 'url': page['url'][:120], 'title': page.get('title', '')[:80], 'char_count': page['char_count']}, ensure_ascii=False)}\n\n"
-            else:
-                yield f"data: {json.dumps({'type': 'failed', 'current': i + 1, 'total': total, 'url': url[:120], 'error': 'Conteudo vazio'}, ensure_ascii=False)}\n\n"
-        except Exception as e:
-            safe_msg = security.safe_error_message(e)
-            logger.warning("Falha ao extrair %s: %s", url[:80], e)
-            yield f"data: {json.dumps({'type': 'failed', 'current': i + 1, 'total': total, 'url': url[:120], 'error': safe_msg}, ensure_ascii=False)}\n\n"
+    # Extrai todas em paralelo
+    yield f"data: {json.dumps({'type': 'extracting', 'current': 0, 'total': total, 'url': 'Iniciando extração concorrente...'}, ensure_ascii=False)}\n\n"
 
-    # Evento done com todas as páginas extraídas
-    pages_data = [
-        {"url": p["url"], "title": p["title"], "content": p["content"], "char_count": p["char_count"]}
-        for p in extracted_pages
-    ]
-    done_event = {
-        "type": "done",
-        "total_extracted": len(extracted_pages),
-        "total_requested": total,
-        "pages": pages_data,
-    }
+    # Usa callback para progresso individual
+    pages = await scraper.extract_multi_page_async(
+        urls,
+        on_progress=_make_sse_progress_callback(total),
+        health=None,
+    )
+
+    # Emite resultados individuais
+    for i, page in enumerate(pages):
+        event = {
+            "type": "extracted",
+            "current": i + 1,
+            "total": len(pages),
+            "url": page["url"][:120],
+            "title": page.get("title", "")[:80],
+            "char_count": page["char_count"],
+        }
+        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+
+    # Done com dados completos
+    pages_data = [{"url": p["url"], "title": p["title"], "content": p["content"], "char_count": p["char_count"]} for p in pages]
+    done_event = {"type": "done", "total_extracted": len(pages), "total_requested": total, "pages": pages_data}
     yield f"data: {json.dumps(done_event, ensure_ascii=False)}\n\n"
+
+
+def _make_sse_progress_callback(total: int):
+    """Cria callback de progresso (async noop — progresso emitido no final)."""
+    async def _noop(current, total_count, url, status, page):
+        pass
+    return _noop
 
 
 @router.post("/extract/multi/stream")
 @limiter.limit("5/minute")
 async def extract_multi_stream(request: Request, body: MultiExtractRequest):
-    """Extrai conteúdo de múltiplas URLs via SSE com progresso por página."""
-    validated_urls = []
-    for url in body.urls:
-        try:
-            validated_urls.append(security.validate_url(url))
-        except ValueError:
-            logger.warning("URL inválida ignorada: %s", url[:80])
-            continue
-
+    """Extrai conteúdo de múltiplas URLs via SSE com progresso."""
+    validated_urls = _validate_urls(body.urls)
     if not validated_urls:
         raise HTTPException(status_code=400, detail="Nenhuma URL válida informada.")
 
     return StreamingResponse(
-        _extract_stream(validated_urls),
+        _extract_stream_sse(validated_urls),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-        },
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive", "X-Accel-Buffering": "no"},
     )
+
+
+def _validate_urls(urls: list[str]) -> list[str]:
+    """Valida lista de URLs, retorna apenas as válidas."""
+    validated = []
+    for url in urls:
+        try:
+            validated.append(security.validate_url(url))
+        except ValueError:
+            logger.warning("URL inválida ignorada: %s", url[:80])
+    return validated
