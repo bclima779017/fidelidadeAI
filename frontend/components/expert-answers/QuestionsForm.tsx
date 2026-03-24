@@ -2,44 +2,10 @@
 
 import React, { useState, useCallback } from "react";
 import { useAuditStore } from "@/lib/store";
+import { QUESTIONS, MIN_ANSWER_LENGTH } from "@/lib/constants";
 import { Card } from "@/components/ui/Card";
 import { TextArea } from "@/components/ui/TextArea";
 import { Button } from "@/components/ui/Button";
-
-const MIN_ANSWER_LENGTH = 10;
-
-const QUESTIONS = [
-  {
-    key: "q1",
-    label: "1. Qual e a proposta de valor da marca?",
-    placeholder:
-      "Ex: A marca oferece solucoes de marketing digital com foco em resultados mensuraveis...",
-  },
-  {
-    key: "q2",
-    label: "2. Quais sao os principais diferenciais competitivos?",
-    placeholder:
-      "Ex: Metodologia propria, equipe certificada pelo Google, atendimento personalizado...",
-  },
-  {
-    key: "q3",
-    label: "3. Qual e o publico-alvo da marca?",
-    placeholder:
-      "Ex: Empresas de medio porte do setor de tecnologia e e-commerce...",
-  },
-  {
-    key: "q4",
-    label: "4. Qual problema a marca resolve para seus clientes?",
-    placeholder:
-      "Ex: Falta de visibilidade online e baixa conversao de leads em vendas...",
-  },
-  {
-    key: "q5",
-    label: "5. Quais sao os principais produtos e/ou servicos?",
-    placeholder:
-      "Ex: SEO, gestao de trafego pago, automacao de marketing, consultoria estrategica...",
-  },
-];
 
 export function QuestionsForm() {
   const expertAnswers = useAuditStore((s) => s.expertAnswers);
@@ -75,14 +41,13 @@ export function QuestionsForm() {
 
   const handleSubmit = useCallback(() => {
     if (!validate()) return;
-
     setErrors({});
     setEvaluationStatus("running");
     setCurrentStep(3);
   }, [validate, setEvaluationStatus, setCurrentStep]);
 
-  const filledCount = Object.values(expertAnswers).filter(
-    (a) => a && a.trim().length >= MIN_ANSWER_LENGTH
+  const filledCount = QUESTIONS.filter(
+    (q) => (expertAnswers[q.key] || "").trim().length >= MIN_ANSWER_LENGTH
   ).length;
 
   return (
@@ -96,12 +61,11 @@ export function QuestionsForm() {
         {QUESTIONS.map((q) => (
           <TextArea
             key={q.key}
-            label={q.label}
+            label={q.text}
             placeholder={q.placeholder}
             value={expertAnswers[q.key] || ""}
             onChange={(e) => {
               setAnswer(q.key, e.target.value);
-              // Limpa erro individual ao digitar
               if (errors[q.key]) {
                 setErrors((prev) => {
                   const next = { ...prev };

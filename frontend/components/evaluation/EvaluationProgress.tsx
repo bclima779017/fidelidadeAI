@@ -1,119 +1,85 @@
 "use client";
 
-import React, { useEffect, useRef, useCallback } from "react";
+import React, { useEffect, useRef } from "react";
 import { useAuditStore } from "@/lib/store";
 import { connectEvaluation } from "@/lib/sse";
+import { QUESTIONS } from "@/lib/constants";
 import { Card } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
 import { Button } from "@/components/ui/Button";
 
-const QUESTION_LABELS = [
-  "Proposta de valor",
-  "Diferenciais competitivos",
-  "Publico-alvo",
-  "Problema resolvido",
-  "Produtos e servicos",
-];
-
 export function EvaluationProgress() {
-  const url = useAuditStore((s) => s.url);
-  const extractedContent = useAuditStore((s) => s.extractedContent);
-  const expertAnswers = useAuditStore((s) => s.expertAnswers);
   const evaluationStatus = useAuditStore((s) => s.evaluationStatus);
   const evaluationProgress = useAuditStore((s) => s.evaluationProgress);
   const results = useAuditStore((s) => s.results);
   const errorMessage = useAuditStore((s) => s.errorMessage);
-  const setEvaluationStatus = useAuditStore((s) => s.setEvaluationStatus);
-  const setEvaluationProgress = useAuditStore((s) => s.setEvaluationProgress);
-  const setErrorMessage = useAuditStore((s) => s.setErrorMessage);
-  const addResult = useAuditStore((s) => s.addResult);
-  const setWeightedScore = useAuditStore((s) => s.setWeightedScore);
-  const setHealth = useAuditStore((s) => s.setHealth);
-  const setCurrentStep = useAuditStore((s) => s.setCurrentStep);
-  const resetEvaluation = useAuditStore((s) => s.resetEvaluation);
+  const expertAnswers = useAuditStore((s) => s.expertAnswers);
 
-  const abortControllerRef = useRef<AbortController | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const startedRef = useRef(false);
 
-  const startEvaluation = useCallback(() => {
+  const filledQuestions = QUESTIONS.filter(
+    (q) => expertAnswers[q.key]?.trim()
+  );
+  const totalQuestions = filledQuestions.length;
+
+  // Efeito principal: inicia avaliação SSE
+  // SEM cleanup de abort — evita que React StrictMode cancele a conexão
+  // O SSE completa naturalmente (done), por timeout, ou via handleRetry
+  useEffect(() => {
+    if (evaluationStatus !== "running") return;
     if (startedRef.current) return;
     startedRef.current = true;
 
+    const state = useAuditStore.getState();
+
     const controller = connectEvaluation(
       {
-        url,
-        content: extractedContent,
-        expert_answers: expertAnswers,
+        context: state.extractedContent,
+        expertAnswers: state.expertAnswers,
       },
       {
         onProgress: (data) => {
-          setEvaluationProgress(data.current, data.total);
+          useAuditStore.getState().setEvaluationProgress(data.current, data.total);
         },
         onResult: (result) => {
-          addResult(result);
+          useAuditStore.getState().addResult(result);
         },
         onDone: (data) => {
           if (data.weighted_score !== undefined) {
-            setWeightedScore(data.weighted_score);
+            useAuditStore.getState().setWeightedScore(data.weighted_score);
           }
           if (data.health) {
-            setHealth(data.health);
+            useAuditStore.getState().setHealth(data.health);
           }
-          setEvaluationStatus("done");
-          setCurrentStep(4);
+          useAuditStore.getState().setEvaluationStatus("done");
+          useAuditStore.getState().setCurrentStep(4);
         },
         onError: (error) => {
-          setErrorMessage(error);
-          setEvaluationStatus("error");
+          useAuditStore.getState().setErrorMessage(error);
+          useAuditStore.getState().setEvaluationStatus("error");
         },
       }
     );
 
-    abortControllerRef.current = controller;
-  }, [
-    url,
-    extractedContent,
-    expertAnswers,
-    setEvaluationProgress,
-    addResult,
-    setWeightedScore,
-    setHealth,
-    setEvaluationStatus,
-    setCurrentStep,
-    setErrorMessage,
-  ]);
+    abortRef.current = controller;
+  }, [evaluationStatus]);
 
-  useEffect(() => {
-    if (evaluationStatus !== "running") return;
-
-    startEvaluation();
-
-    return () => {
-      // Cleanup: aborta conexão SSE se componente desmontar
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
-      }
-    };
-  }, [evaluationStatus, startEvaluation]);
-
-  const handleRetry = useCallback(() => {
-    startedRef.current = false;
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
+  const handleRetry = () => {
+    // Aborta conexão anterior
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
     }
-    resetEvaluation();
-    // Pequeno delay para garantir que o estado resetou antes de re-disparar
-    setTimeout(() => {
-      setEvaluationStatus("running");
-      setCurrentStep(3);
-    }, 100);
-  }, [resetEvaluation, setEvaluationStatus, setCurrentStep]);
+    startedRef.current = false;
 
-  const totalQuestions = Object.keys(expertAnswers).filter(
-    (k) => expertAnswers[k]?.trim()
-  ).length;
+    useAuditStore.getState().resetEvaluation();
+    setTimeout(() => {
+      useAuditStore.getState().setEvaluationStatus("running");
+      useAuditStore.getState().setCurrentStep(3);
+    }, 150);
+  };
+
   const progressPercent =
     totalQuestions > 0
       ? Math.round((evaluationProgress.current / totalQuestions) * 100)
@@ -121,6 +87,7 @@ export function EvaluationProgress() {
 
   const isDone = evaluationStatus === "done";
   const isError = evaluationStatus === "error";
+  const isRunning = evaluationStatus === "running";
 
   return (
     <Card title="3. Avaliacao em Andamento">
@@ -132,6 +99,8 @@ export function EvaluationProgress() {
                 ? "Avaliacao concluida"
                 : isError
                 ? "Erro na avaliacao"
+                : isRunning && evaluationProgress.current === 0
+                ? "Iniciando avaliacao..."
                 : `Avaliando pergunta ${evaluationProgress.current} de ${totalQuestions}...`}
             </span>
             <span className="font-medium text-kipiai-dark">
@@ -141,19 +110,14 @@ export function EvaluationProgress() {
           <ProgressBar value={isDone ? 100 : progressPercent} height="lg" />
         </div>
 
-        {/* Individual question status */}
         <div className="space-y-2" role="list" aria-label="Status das perguntas">
-          {QUESTION_LABELS.slice(0, totalQuestions).map((label, index) => {
+          {filledQuestions.map((q, index) => {
             const hasResult = index < results.length;
             const isEvaluating =
-              !isDone && index === evaluationProgress.current - 1;
+              isRunning && !isDone && index === evaluationProgress.current - 1;
 
             return (
-              <div
-                key={index}
-                role="listitem"
-                className="flex items-center gap-3 text-sm"
-              >
+              <div key={q.key} role="listitem" className="flex items-center gap-3 text-sm">
                 <div
                   className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${
                     hasResult
@@ -165,38 +129,18 @@ export function EvaluationProgress() {
                   aria-hidden="true"
                 >
                   {hasResult ? (
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <path d="M20 6 9 17l-5-5" />
-                    </svg>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6 9 17l-5-5" /></svg>
                   ) : isEvaluating ? (
                     <div className="w-2 h-2 bg-white rounded-full" />
                   ) : (
                     <span className="text-xs">{index + 1}</span>
                   )}
                 </div>
-                <span
-                  className={
-                    hasResult
-                      ? "text-kipiai-dark"
-                      : isEvaluating
-                      ? "text-kipiai-blue font-medium"
-                      : "text-gray-400"
-                  }
-                >
-                  {label}
+                <span className={hasResult ? "text-kipiai-dark" : isEvaluating ? "text-kipiai-blue font-medium" : "text-gray-400"}>
+                  {q.label}
                   {hasResult && results[index] && (
                     <span className="ml-2 text-kipiai-gray">
-                      — Score: {results[index].score}
+                      — Score: {results[index].score >= 0 ? results[index].score : "erro"}
                     </span>
                   )}
                 </span>

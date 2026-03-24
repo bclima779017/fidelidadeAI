@@ -1,46 +1,93 @@
 import { EvaluateResult, EvalHealth } from "./types";
+import { QUESTIONS } from "./constants";
 
 const BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-interface EvaluationBody {
-  url: string;
-  content: string;
-  expert_answers: Record<string, string>;
-}
+const SSE_TIMEOUT_MS = 600_000; // 10 minutos para toda a avaliação (cada pergunta ~30-60s)
 
 interface EvaluationCallbacks {
-  onProgress: (data: { current: number; total: number }) => void;
+  onProgress: (data: { current: number; total: number; question: string }) => void;
   onResult: (result: EvaluateResult) => void;
   onDone: (data: { weighted_score?: number; health?: EvalHealth }) => void;
   onError: (error: string) => void;
 }
 
 /**
+ * Transforma expert_answers (Record q1-q5) em questions[] para o backend.
+ */
+function buildQuestionsPayload(
+  expertAnswers: Record<string, string>
+): { question: string; official_answer: string }[] {
+  return QUESTIONS.filter((q) => expertAnswers[q.key]?.trim())
+    .map((q) => ({
+      question: q.text,
+      official_answer: expertAnswers[q.key].trim(),
+    }));
+}
+
+/**
  * Conecta ao endpoint de avaliação via SSE.
- * Retorna um AbortController para cancelar a conexão.
+ * Retorna AbortController para cancelamento.
  */
 export function connectEvaluation(
-  body: EvaluationBody,
+  params: {
+    context: string;
+    expertAnswers: Record<string, string>;
+    apiKey?: string;
+  },
   callbacks: EvaluationCallbacks
 ): AbortController {
   const controller = new AbortController();
-  let parseErrors = 0;
 
-  // Fire-and-forget async — erros vão para onError callback
+  const questions = buildQuestionsPayload(params.expertAnswers);
+
+  if (questions.length === 0) {
+    setTimeout(() => callbacks.onError("Nenhuma resposta do especialista preenchida."), 0);
+    return controller;
+  }
+
+  if (!params.context || params.context.trim().length === 0) {
+    setTimeout(() => callbacks.onError("Conteudo do site nao extraido."), 0);
+    return controller;
+  }
+
+  const requestBody = {
+    context: params.context,
+    questions,
+    ...(params.apiKey ? { api_key: params.apiKey } : {}),
+  };
+
+  console.log("[SSE] Iniciando avaliação:", {
+    contextLen: params.context.length,
+    questionsCount: questions.length,
+    url: `${BASE_URL}/api/evaluate`,
+  });
+
+  // Timeout global para a conexão SSE
+  const timeoutId = setTimeout(() => {
+    console.error("[SSE] Timeout global atingido");
+    controller.abort();
+    callbacks.onError("Timeout: a avaliação excedeu o tempo limite. Tente novamente.");
+  }, SSE_TIMEOUT_MS);
+
   (async () => {
     try {
+      console.log("[SSE] Enviando fetch...");
       const response = await fetch(`${BASE_URL}/api/evaluate`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "text/event-stream",
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify(requestBody),
         signal: controller.signal,
       });
 
+      console.log("[SSE] Response status:", response.status);
+
       if (!response.ok) {
+        clearTimeout(timeoutId);
         let errorMsg = `Erro ${response.status}`;
         try {
           const errorData = await response.json();
@@ -48,23 +95,30 @@ export function connectEvaluation(
         } catch {
           // keep default
         }
+        console.error("[SSE] Erro HTTP:", errorMsg);
         callbacks.onError(errorMsg);
         return;
       }
 
       const reader = response.body?.getReader();
       if (!reader) {
+        clearTimeout(timeoutId);
         callbacks.onError("Stream nao disponivel");
         return;
       }
 
+      console.log("[SSE] Stream conectado, lendo eventos...");
       const decoder = new TextDecoder();
       let buffer = "";
+      let parseErrors = 0;
 
       try {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            console.log("[SSE] Stream finalizado");
+            break;
+          }
 
           buffer += decoder.decode(value, { stream: true });
 
@@ -82,18 +136,19 @@ export function connectEvaluation(
             } else if (line === "" && eventData) {
               try {
                 const parsed = JSON.parse(eventData);
+                console.log("[SSE] Evento:", parsed.type, parsed.current || "");
 
                 switch (eventType || parsed.type) {
                   case "progress":
                     callbacks.onProgress({
                       current: parsed.current,
                       total: parsed.total,
+                      question: parsed.question || "",
                     });
                     break;
                   case "result": {
                     const raw = parsed.data || parsed.result || parsed;
-                    // Normaliza campos backend → frontend
-                    const normalized = {
+                    const normalized: EvaluateResult = {
                       ...raw,
                       ai_answer: raw.ai_answer || raw.resposta_ia || "",
                       expert_answer: raw.expert_answer || raw.official_answer || "",
@@ -104,21 +159,24 @@ export function connectEvaluation(
                     break;
                   }
                   case "done":
+                    clearTimeout(timeoutId);
                     callbacks.onDone({
                       weighted_score: parsed.weighted_score,
                       health: parsed.health,
                     });
                     break;
                   case "error":
+                    clearTimeout(timeoutId);
                     callbacks.onError(parsed.message || "Erro desconhecido");
                     break;
                 }
               } catch {
                 parseErrors++;
-                if (parseErrors >= 3) {
-                  callbacks.onError(
-                    `Multiplos erros ao processar dados do servidor (${parseErrors} falhas)`
-                  );
+                console.warn("[SSE] Parse error #" + parseErrors, eventData.substring(0, 100));
+                if (parseErrors >= 5) {
+                  clearTimeout(timeoutId);
+                  callbacks.onError("Erros repetidos ao processar dados do servidor.");
+                  return;
                 }
               }
               eventType = "";
@@ -127,16 +185,18 @@ export function connectEvaluation(
           }
         }
       } finally {
+        clearTimeout(timeoutId);
         reader.releaseLock();
       }
     } catch (error) {
-      // Não reporta erro se foi cancelamento intencional
+      clearTimeout(timeoutId);
       if (error instanceof DOMException && error.name === "AbortError") {
+        console.log("[SSE] Conexão abortada (esperado)");
         return;
       }
-      callbacks.onError(
-        error instanceof Error ? error.message : "Erro de conexao"
-      );
+      const msg = error instanceof Error ? error.message : "Erro de conexao";
+      console.error("[SSE] Erro fatal:", msg);
+      callbacks.onError(msg);
     }
   })();
 

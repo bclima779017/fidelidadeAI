@@ -3,18 +3,29 @@ export interface ExtractResponse {
   url: string;
   title?: string;
   char_count?: number;
-  pages_found?: number;
 }
 
-export interface QuestionInput {
-  question: string;
-  expert_answer: string;
-  weight?: number;
+export interface UrlInfo {
+  url: string;
+  lastmod: string;
+  source: string;
 }
 
-export interface ClaimAnalysis {
-  text: string;
-  preserved: boolean;
+export interface SitemapResponse {
+  urls: UrlInfo[];
+  total: number;
+}
+
+export interface MultiExtractResponse {
+  pages: ExtractResponse[];
+  total_extracted: number;
+  total_requested: number;
+}
+
+export interface RAGIndexResponse {
+  total_chunks: number;
+  total_pages: number;
+  chunks_per_page: Record<string, number>;
 }
 
 export interface EvaluateResult {
@@ -31,36 +42,32 @@ export interface EvaluateResult {
   justificativa?: string;
   fontes?: string[];
   context_truncated?: boolean;
-  // Campos de compatibilidade com o frontend
-  question_index?: number;
-  expert_answer?: string;
+  // Campos normalizados para o frontend
   ai_answer?: string;
+  expert_answer?: string;
   semantic_match?: number | null;
   claims_rate?: number | null;
-  claims?: ClaimAnalysis[];
 }
 
+/** Alinhado com EvalHealth do backend (health.py) */
 export interface EvalHealth {
-  score_spread: number;
-  has_low_scores: boolean;
-  avg_justification_length: number;
-  claims_coverage: number;
-  overall_quality: "good" | "warning" | "poor";
-}
-
-export interface SuggestionItem {
-  rank: number;
-  category: string;
-  suggestion: string;
-  priority: "alta" | "media" | "baixa";
-  related_question?: number;
+  context_truncated: boolean;
+  context_original_chars: number;
+  context_used_chars: number;
+  pct_lost: number;
+  json_parse_failures: number;
+  json_parse_details: string[];
+  total_retries: number;
+  retry_details: { question: string; attempt: number; reason: string; wait_s: number }[];
+  poor_extraction_pages: { url: string; char_count: number }[];
+  thin_chunks: { url: string; text_preview: string; char_count: number }[];
+  has_warnings: boolean;
 }
 
 export interface EvaluationSSEData {
   type: "progress" | "result" | "done" | "error";
   current?: number;
   total?: number;
-  result?: EvaluateResult;
   data?: EvaluateResult;
   weighted_score?: number;
   health?: EvalHealth;

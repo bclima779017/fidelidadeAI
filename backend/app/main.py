@@ -20,6 +20,8 @@ from slowapi.errors import RateLimitExceeded
 
 import config
 from app.routers import extract, evaluate
+from app.routers import sitemap_router, rag_router
+from app.routers.evaluate import get_rag_instance
 from app.schemas import HealthResponse
 
 # ── Logging ──
@@ -73,7 +75,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "Accept"],
 )
 
@@ -91,13 +93,17 @@ async def global_exception_handler(request: Request, exc: Exception):
 # ── Routers ──
 app.include_router(extract.router)
 app.include_router(evaluate.router)
+app.include_router(sitemap_router.router)
+app.include_router(rag_router.router)
 
 
 # ── Health Check ──
 @app.get("/api/health", response_model=HealthResponse)
 async def health_check():
+    rag = get_rag_instance()
     return HealthResponse(
         status="ok",
         version="1.0.0",
         knowledge_base_loaded=_knowledge_loaded,
+        rag_indexed=rag is not None and rag.is_ready,
     )

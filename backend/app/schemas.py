@@ -67,12 +67,73 @@ class EvaluateResult(BaseModel):
     context_truncated: bool = False
 
 
+# ── Sitemap ──
+
+class SitemapRequest(BaseModel):
+    url: str = Field(..., min_length=1, max_length=2048, description="URL base do site")
+    max_pages: int = Field(50, ge=1, le=200, description="Máximo de páginas a descobrir")
+
+    @field_validator("url")
+    @classmethod
+    def validate_url_format(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("URL não informada.")
+        if not re.match(r"^https?://", v, re.IGNORECASE):
+            v = "https://" + v
+        return v
+
+
+class UrlInfo(BaseModel):
+    url: str
+    lastmod: str = ""
+    source: str = ""
+
+
+class SitemapResponse(BaseModel):
+    urls: list[UrlInfo]
+    total: int
+
+
+# ── Multi Extract ──
+
+class MultiExtractRequest(BaseModel):
+    urls: list[str] = Field(..., min_length=1, max_length=200, description="URLs para extrair")
+
+
+class MultiExtractResponse(BaseModel):
+    pages: list[ExtractResponse]
+    total_extracted: int
+    total_requested: int
+
+
+# ── RAG ──
+
+class RAGIndexRequest(BaseModel):
+    pages: list[ExtractResponse] = Field(..., min_length=1, description="Páginas para indexar")
+    api_key: str | None = Field(None, description="Chave da API Gemini")
+
+
+class RAGIndexResponse(BaseModel):
+    total_chunks: int
+    total_pages: int
+    chunks_per_page: dict[str, int]
+
+
+class RAGStatsResponse(BaseModel):
+    total_chunks: int
+    total_pages: int
+    chunks_per_page: dict[str, int]
+    is_ready: bool
+
+
 # ── Health ──
 
 class HealthResponse(BaseModel):
     status: str = "ok"
     version: str = "1.0.0"
     knowledge_base_loaded: bool = False
+    rag_indexed: bool = False
 
 
 # ── SSE Events ──

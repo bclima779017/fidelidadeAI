@@ -3,9 +3,11 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { StepIndicator } from "./StepIndicator";
+import { useAuditStore } from "@/lib/store";
 
 export function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const ragStats = useAuditStore((s) => s.ragStats);
 
   return (
     <>
@@ -73,12 +75,39 @@ export function Sidebar() {
         {/* Step Indicator */}
         <div className="flex-1 px-6 py-6 overflow-y-auto">
           <StepIndicator />
+
+          {/* RAG Stats no sidebar */}
+          {ragStats && (
+            <div className="mt-6 pt-4 border-t border-gray-800">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                Indice RAG
+              </p>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Paginas</span>
+                  <span className="text-white font-medium">{ragStats.total_pages}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Chunks</span>
+                  <span className="text-white font-medium">{ragStats.total_chunks}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-gray-500">Chunks/pag</span>
+                  <span className="text-white font-medium">
+                    {ragStats.total_pages > 0
+                      ? (ragStats.total_chunks / ragStats.total_pages).toFixed(1)
+                      : "0"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
         <div className="px-6 py-4 border-t border-gray-800">
           <p className="text-xs text-gray-600">
-            v0.1.0 MVP
+            v0.2.0
           </p>
         </div>
       </aside>

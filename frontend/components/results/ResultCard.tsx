@@ -129,29 +129,41 @@ export const ResultCard = memo(function ResultCard({
           )}
 
           {/* Claims analysis */}
-          {result.claims && result.claims.length > 0 && (
+          {((result.claims_preservados && result.claims_preservados.length > 0) ||
+            (result.claims_omitidos && result.claims_omitidos.length > 0)) && (
             <div>
               <h4 className="text-xs font-semibold text-kipiai-gray uppercase tracking-wider mb-2">
-                Analise de Claims ({result.claims.length})
+                Analise de Claims
               </h4>
               <div className="space-y-2" role="list">
-                {result.claims.map((claim, ci) => (
+                {(result.claims_preservados || []).map((claim, ci) => (
                   <div
-                    key={ci}
+                    key={`p-${ci}`}
                     role="listitem"
                     className="flex items-start gap-2 bg-gray-50 rounded-lg p-2 text-sm"
                   >
                     <span
-                      className={`mt-0.5 flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-xs ${
-                        claim.preserved
-                          ? "bg-kipiai-green text-white"
-                          : "bg-kipiai-red text-white"
-                      }`}
-                      aria-label={claim.preserved ? "Preservado" : "Omitido"}
+                      className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-xs bg-kipiai-green text-white"
+                      aria-label="Preservado"
                     >
-                      {claim.preserved ? "\u2713" : "\u2717"}
+                      {"\u2713"}
                     </span>
-                    <span className="text-kipiai-dark">{claim.text}</span>
+                    <span className="text-kipiai-dark">{claim}</span>
+                  </div>
+                ))}
+                {(result.claims_omitidos || []).map((claim, ci) => (
+                  <div
+                    key={`o-${ci}`}
+                    role="listitem"
+                    className="flex items-start gap-2 bg-gray-50 rounded-lg p-2 text-sm"
+                  >
+                    <span
+                      className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-xs bg-kipiai-red text-white"
+                      aria-label="Omitido"
+                    >
+                      {"\u2717"}
+                    </span>
+                    <span className="text-kipiai-dark">{claim}</span>
                   </div>
                 ))}
               </div>
