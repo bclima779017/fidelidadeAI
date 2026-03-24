@@ -1,5 +1,31 @@
 # Histórico de Implementação — Kípiai Audit
 
+## Sessão 2026-03-24 #2 — UX/Animações e Polish Visual
+**Foco:** 10 melhorias de experiência, animação e dark mode no frontend Next.js
+- Motion (framer-motion): transições AnimatePresence entre steps do wizard, staggered reveals nos ResultCards, expand/collapse animado
+- Score Gauge radial: SVG animado substituindo números grandes nos ScoreCards, arco preenche com easing + cor dinâmica
+- Sonner toasts: notificações por pergunta avaliada, conclusão e erros sem bloquear a UI
+- Skeleton loading: placeholders pulsantes nos ScoreCards e ResultCards durante carregamento dinâmico
+- Confetti (canvas-confetti): burst celebratório quando Score Final >= 90
+- Dark mode: `next-themes` + toggle sol/lua no sidebar, `dark:` em todos os componentes
+- Tooltips (Floating UI): hover nos indicadores de saúde explica cada métrica
+- Auto-animate (@formkit): lista de perguntas anima ao adicionar resultados SSE
+- Count-up nos gauges: scores animam de 0 ao valor final
+- Async pipeline: google-genai nativo, httpx AsyncClient, avaliação concorrente (Semaphore+Queue)
+- Heartbeat de avaliação: timer cronômetro + mensagens rotativas + cancel button
+- Revisão ampla: RAG Lock, eval timeout, JSON validation, sitemap depth limit
+- **Decisões:** Motion (~15KB) em vez de react-spring; Sonner em vez de react-hot-toast; SVG custom; dark mode via class strategy
+
+## Sessão 2026-03-24 #1 — Frontend Next.js: Segurança, Sitemap, RAG e Avaliação
+**Foco:** Migração completa do fluxo Streamlit para Next.js + FastAPI, segurança OWASP, e correção de bugs críticos
+- Revisão OWASP: CORS restritivo, rate limiting (slowapi), API key via header, XXE protection (defusedxml), DNS rebinding, input validation
+- Estabilidade: Error Boundary, AbortController no SSE, thread safety, logging estruturado
+- Sitemap multi-página: endpoints `/api/sitemap/discover` e `/api/extract/multi/stream`, UI com tabela de seleção
+- RAG indexing: endpoints `/api/rag/index`, `/api/rag/stats`, `/api/rag/clear`, integrado na avaliação SSE
+- Fix crítico SSE: payload mismatch, React StrictMode abortava conexão
+- Modal de boas-vindas, selo de saúde (Excelente/Boa/Mediana/Fraca)
+- **Decisões:** SSE callbacks com `useAuditStore.getState()`; constantes centralizadas; overlay manual
+
 ## Sessão 2026-03-23 #1 — Hardening do Streamlit + Planejamento e Scaffold Next.js
 
 **Foco:** Revisão completa do código Streamlit, correção de bugs críticos, robustez do pipeline de avaliação e início da migração para Next.js + FastAPI
