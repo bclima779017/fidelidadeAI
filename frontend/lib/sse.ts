@@ -8,7 +8,7 @@ const SSE_TIMEOUT_MS = 600_000; // 10 minutos para toda a avaliação (cada perg
 
 interface EvaluationCallbacks {
   onProgress: (data: { current: number; total: number; question: string }) => void;
-  onResult: (result: EvaluateResult) => void;
+  onResult: (result: EvaluateResult, index: number) => void;
   onDone: (data: { weighted_score?: number; health?: EvalHealth }) => void;
   onError: (error: string) => void;
 }
@@ -148,6 +148,7 @@ export function connectEvaluation(
                     break;
                   case "result": {
                     const raw = parsed.data || parsed.result || parsed;
+                    const resultIndex = parsed.index ?? -1;
                     const normalized: EvaluateResult = {
                       ...raw,
                       ai_answer: raw.ai_answer || raw.resposta_ia || "",
@@ -155,7 +156,7 @@ export function connectEvaluation(
                       semantic_match: raw.semantic_match ?? raw.match_semantico ?? null,
                       claims_rate: raw.claims_rate ?? raw.taxa_claims ?? null,
                     };
-                    callbacks.onResult(normalized);
+                    callbacks.onResult(normalized, resultIndex);
                     break;
                   }
                   case "done":

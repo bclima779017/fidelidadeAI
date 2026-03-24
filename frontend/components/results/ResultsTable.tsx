@@ -29,7 +29,7 @@ export const ResultsTable = memo(function ResultsTable() {
               </tr>
             </thead>
             <tbody>
-              {results.map((result, index) => (
+              {results.map((result, index) => result ? (
                 <tr key={index} className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
                   <td className="py-3 px-2 text-kipiai-dark dark:text-gray-200 font-medium">
                     {QUESTIONS[index]?.label || `Pergunta ${index + 1}`}
@@ -44,7 +44,7 @@ export const ResultsTable = memo(function ResultsTable() {
                     <Badge score={result.score} />
                   </td>
                 </tr>
-              ))}
+              ) : null)}
             </tbody>
           </table>
         </div>

@@ -59,7 +59,7 @@ interface AuditState {
   setEvaluationStatus: (status: AuditState["evaluationStatus"]) => void;
   setEvaluationProgress: (current: number, total: number) => void;
   setErrorMessage: (message: string | null) => void;
-  addResult: (result: EvaluateResult) => void;
+  addResult: (result: EvaluateResult, index: number) => void;
   setWeightedScore: (score: number) => void;
   setHealth: (health: EvalHealth) => void;
   resetEvaluation: () => void;
@@ -143,14 +143,20 @@ export const useAuditStore = create<AuditState>((set, get) => ({
 
   setErrorMessage: (message) => set({ errorMessage: message }),
 
-  addResult: (result) =>
-    set((state) => ({
-      results: [...state.results, result],
-      evaluationProgress: {
-        ...state.evaluationProgress,
-        current: state.results.length + 1,
-      },
-    })),
+  addResult: (result, index) =>
+    set((state) => {
+      // Insere na posição correta (por index do SSE), não sequencial
+      const newResults = [...state.results];
+      newResults[index] = result;
+      const completedCount = newResults.filter(Boolean).length;
+      return {
+        results: newResults,
+        evaluationProgress: {
+          ...state.evaluationProgress,
+          current: completedCount,
+        },
+      };
+    }),
 
   setWeightedScore: (score) => set({ weightedScore: score }),
 

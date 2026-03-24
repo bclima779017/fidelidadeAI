@@ -12,7 +12,7 @@ export const ScoreCards = memo(function ScoreCards() {
   const confettiFired = useRef(false);
 
   const { minScore, maxScore, finalScore } = useMemo(() => {
-    const scores = results.map((r) => r.score).filter((s) => s >= 0);
+    const scores = results.filter(Boolean).map((r) => r.score).filter((s) => s >= 0);
     return {
       minScore: scores.length > 0 ? Math.min(...scores) : 0,
       maxScore: scores.length > 0 ? Math.max(...scores) : 0,

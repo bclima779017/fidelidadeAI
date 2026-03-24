@@ -101,11 +101,11 @@ export function EvaluationProgress() {
         onProgress: (data) => {
           useAuditStore.getState().setEvaluationProgress(data.current, data.total);
         },
-        onResult: (result) => {
-          useAuditStore.getState().addResult(result);
+        onResult: (result, index) => {
+          useAuditStore.getState().addResult(result, index);
           const score = result.score;
           if (score >= 0) {
-            toast.success(`Pergunta avaliada — Score: ${score}`, { duration: 2000 });
+            toast.success(`Pergunta ${index + 1} avaliada — Score: ${score}`, { duration: 2000 });
           }
         },
         onDone: (data) => {
@@ -199,7 +199,7 @@ export function EvaluationProgress() {
         {/* Question status list */}
         <div ref={listRef} className="space-y-2" role="list" aria-label="Status das perguntas">
           {filledQuestions.map((q, index) => {
-            const hasResult = index < results.length;
+            const hasResult = !!results[index];
             const isEvaluating = isRunning && !isDone && index === evaluationProgress.current - 1;
 
             return (

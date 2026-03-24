@@ -110,9 +110,9 @@ export default function AuditPage() {
               <h2 className="text-xl font-semibold text-kipiai-dark dark:text-white">
                 Detalhamento por Pergunta
               </h2>
-              {results.map((result, index) => (
-                <ResultCard key={index} result={result} index={index} />
-              ))}
+              {results.map((result, index) =>
+                result ? <ResultCard key={index} result={result} index={index} /> : null
+              )}
             </div>
           </motion.section>
         )}
