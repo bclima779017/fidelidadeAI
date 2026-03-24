@@ -1,5 +1,6 @@
 """FastAPI application — backend para auditoria de fidelidade RAG/GEO."""
 
+import logging
 import sys
 import os
 
@@ -10,13 +11,27 @@ sys.path.insert(0, services_dir)
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 import config
 from app.routers import extract, evaluate
 from app.schemas import HealthResponse
 
+# ── Logging ──
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("kipiai")
+
+# ── Rate Limiter ──
+limiter = Limiter(key_func=get_remote_address)
 
 # ── Estado global da aplicação ──
 _knowledge_loaded = False
@@ -26,22 +41,20 @@ _knowledge_loaded = False
 async def lifespan(app: FastAPI):
     """Startup/shutdown events."""
     global _knowledge_loaded
-    # Carrega a base de conhecimento no startup
     try:
         import suggestions
         if suggestions.is_available():
             suggestions.load_knowledge()
             _knowledge_loaded = True
-            print("[STARTUP] Base de conhecimento carregada com sucesso.")
+            logger.info("Base de conhecimento carregada com sucesso.")
         else:
-            print("[STARTUP] Base de conhecimento não encontrada — sugestões desabilitadas.")
+            logger.warning("Base de conhecimento não encontrada — sugestões desabilitadas.")
     except Exception as e:
-        print(f"[STARTUP] Erro ao carregar base de conhecimento: {e}")
+        logger.error("Erro ao carregar base de conhecimento: %s", e)
 
-    yield  # Aplicação rodando
+    yield
 
-    # Shutdown
-    print("[SHUTDOWN] Encerrando backend.")
+    logger.info("Encerrando backend.")
 
 
 app = FastAPI(
@@ -51,14 +64,29 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ── Rate Limiter ──
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 # ── CORS ──
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "Accept"],
 )
+
+
+# ── Global exception handler ──
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    logger.error("Unhandled exception: %s", exc, exc_info=True)
+    return JSONResponse(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        content={"detail": "Erro interno do servidor."},
+    )
+
 
 # ── Routers ──
 app.include_router(extract.router)

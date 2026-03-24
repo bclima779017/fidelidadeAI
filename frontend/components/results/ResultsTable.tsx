@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { memo } from "react";
 import { useAuditStore } from "@/lib/store";
 import { Card } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
@@ -14,25 +14,25 @@ const QUESTION_SHORT = [
   "Produtos/servicos",
 ];
 
-export function ResultsTable() {
-  const { results } = useAuditStore();
+export const ResultsTable = memo(function ResultsTable() {
+  const results = useAuditStore((s) => s.results);
 
   return (
     <Card title="Resumo dos Resultados">
       <div className="overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm" aria-label="Tabela de resultados da auditoria">
           <thead>
             <tr className="border-b border-gray-200">
-              <th className="text-left py-3 px-2 text-kipiai-gray font-medium">
+              <th scope="col" className="text-left py-3 px-2 text-kipiai-gray font-medium">
                 Pergunta
               </th>
-              <th className="text-center py-3 px-2 text-kipiai-gray font-medium w-36">
+              <th scope="col" className="text-center py-3 px-2 text-kipiai-gray font-medium w-36">
                 Match Semantico
               </th>
-              <th className="text-center py-3 px-2 text-kipiai-gray font-medium w-36">
+              <th scope="col" className="text-center py-3 px-2 text-kipiai-gray font-medium w-36">
                 Taxa Claims
               </th>
-              <th className="text-center py-3 px-2 text-kipiai-gray font-medium w-24">
+              <th scope="col" className="text-center py-3 px-2 text-kipiai-gray font-medium w-24">
                 Score
               </th>
             </tr>
@@ -48,13 +48,13 @@ export function ResultsTable() {
                 </td>
                 <td className="py-3 px-2">
                   <ProgressBar
-                    value={Math.round((result.semantic_match ?? 0) * 100)}
+                    value={Math.round(result.semantic_match ?? 0)}
                     height="sm"
                   />
                 </td>
                 <td className="py-3 px-2">
                   <ProgressBar
-                    value={Math.round((result.claims_rate ?? 0) * 100)}
+                    value={Math.round(result.claims_rate ?? 0)}
                     height="sm"
                   />
                 </td>
@@ -68,4 +68,4 @@ export function ResultsTable() {
       </div>
     </Card>
   );
-}
+});

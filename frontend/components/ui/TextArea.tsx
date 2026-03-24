@@ -34,6 +34,7 @@ export function TextArea({
           focus:outline-none focus:ring-2 focus:ring-kipiai-blue focus:border-transparent
           placeholder-gray-400 text-kipiai-dark
           transition-shadow duration-200 resize-vertical min-h-[100px]
+          disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-gray-100
           ${error ? "border-kipiai-red ring-1 ring-kipiai-red" : ""}
           ${className}
         `}

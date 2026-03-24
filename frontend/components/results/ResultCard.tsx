@@ -1,10 +1,8 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, memo } from "react";
 import { EvaluateResult } from "@/lib/types";
 import { Badge } from "@/components/ui/Badge";
-
-const QUESTION_EMOJIS = ["💎", "⚡", "🎯", "🔧", "📦"];
 
 const QUESTION_LABELS = [
   "Qual e a proposta de valor da marca?",
@@ -19,20 +17,26 @@ interface ResultCardProps {
   index: number;
 }
 
-export function ResultCard({ result, index }: ResultCardProps) {
+export const ResultCard = memo(function ResultCard({
+  result,
+  index,
+}: ResultCardProps) {
   const [expanded, setExpanded] = useState(false);
 
-  const emoji = QUESTION_EMOJIS[index] || "📋";
   const question = QUESTION_LABELS[index] || `Pergunta ${index + 1}`;
 
   return (
     <div className="bg-white rounded-xl shadow-md overflow-hidden">
       {/* Header */}
       <button
-        className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors text-left"
+        className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 transition-colors text-left cursor-pointer"
         onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        aria-label={`${question} — Score: ${result.score}. ${expanded ? "Recolher" : "Expandir"} detalhes`}
       >
-        <span className="text-xl flex-shrink-0">{emoji}</span>
+        <span className="flex-shrink-0 w-7 h-7 rounded-full bg-kipiai-blue/10 flex items-center justify-center text-xs font-bold text-kipiai-blue">
+          {index + 1}
+        </span>
         <span className="flex-1 font-medium text-kipiai-dark text-sm">
           {question}
         </span>
@@ -50,6 +54,7 @@ export function ResultCard({ result, index }: ResultCardProps) {
           className={`text-kipiai-gray transition-transform flex-shrink-0 ${
             expanded ? "rotate-180" : ""
           }`}
+          aria-hidden="true"
         >
           <path d="m6 9 6 6 6-6" />
         </svg>
@@ -64,7 +69,7 @@ export function ResultCard({ result, index }: ResultCardProps) {
               <h4 className="text-xs font-semibold text-kipiai-gray uppercase tracking-wider mb-2">
                 Resposta do Especialista
               </h4>
-              <div className="bg-gray-50 rounded-lg p-3 text-sm text-kipiai-dark">
+              <div className="bg-gray-50 rounded-lg p-3 text-sm text-kipiai-dark whitespace-pre-wrap">
                 {result.expert_answer || "Nao informada"}
               </div>
             </div>
@@ -72,7 +77,7 @@ export function ResultCard({ result, index }: ResultCardProps) {
               <h4 className="text-xs font-semibold text-kipiai-gray uppercase tracking-wider mb-2">
                 Resposta da IA
               </h4>
-              <div className="bg-blue-50 rounded-lg p-3 text-sm text-kipiai-dark">
+              <div className="bg-blue-50 rounded-lg p-3 text-sm text-kipiai-dark whitespace-pre-wrap">
                 {result.ai_answer || "Nao disponivel"}
               </div>
             </div>
@@ -83,11 +88,11 @@ export function ResultCard({ result, index }: ResultCardProps) {
             <h4 className="text-xs font-semibold text-kipiai-gray uppercase tracking-wider mb-2">
               Detalhamento do Score
             </h4>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-3" role="group" aria-label="Metricas do score">
               <div className="bg-gray-50 rounded-lg p-3 text-center">
                 <p className="text-xs text-kipiai-gray mb-1">Score</p>
                 <p className="text-lg font-bold text-kipiai-dark">
-                  {result.score}
+                  {result.score >= 0 ? result.score : "N/A"}
                 </p>
               </div>
               <div className="bg-gray-50 rounded-lg p-3 text-center">
@@ -95,16 +100,16 @@ export function ResultCard({ result, index }: ResultCardProps) {
                   Match Semantico
                 </p>
                 <p className="text-lg font-bold text-kipiai-dark">
-                  {result.semantic_match !== undefined
-                    ? `${Math.round(result.semantic_match * 100)}%`
+                  {result.semantic_match != null
+                    ? `${Math.round(result.semantic_match)}%`
                     : "N/A"}
                 </p>
               </div>
               <div className="bg-gray-50 rounded-lg p-3 text-center">
                 <p className="text-xs text-kipiai-gray mb-1">Taxa Claims</p>
                 <p className="text-lg font-bold text-kipiai-dark">
-                  {result.claims_rate !== undefined
-                    ? `${Math.round(result.claims_rate * 100)}%`
+                  {result.claims_rate != null
+                    ? `${Math.round(result.claims_rate)}%`
                     : "N/A"}
                 </p>
               </div>
@@ -117,7 +122,7 @@ export function ResultCard({ result, index }: ResultCardProps) {
               <h4 className="text-xs font-semibold text-kipiai-gray uppercase tracking-wider mb-2">
                 Justificativa
               </h4>
-              <div className="bg-yellow-50 rounded-lg p-3 text-sm text-kipiai-dark">
+              <div className="bg-yellow-50 rounded-lg p-3 text-sm text-kipiai-dark whitespace-pre-wrap">
                 {result.justificativa}
               </div>
             </div>
@@ -129,10 +134,11 @@ export function ResultCard({ result, index }: ResultCardProps) {
               <h4 className="text-xs font-semibold text-kipiai-gray uppercase tracking-wider mb-2">
                 Analise de Claims ({result.claims.length})
               </h4>
-              <div className="space-y-2">
+              <div className="space-y-2" role="list">
                 {result.claims.map((claim, ci) => (
                   <div
                     key={ci}
+                    role="listitem"
                     className="flex items-start gap-2 bg-gray-50 rounded-lg p-2 text-sm"
                   >
                     <span
@@ -141,8 +147,9 @@ export function ResultCard({ result, index }: ResultCardProps) {
                           ? "bg-kipiai-green text-white"
                           : "bg-kipiai-red text-white"
                       }`}
+                      aria-label={claim.preserved ? "Preservado" : "Omitido"}
                     >
-                      {claim.preserved ? "✓" : "✗"}
+                      {claim.preserved ? "\u2713" : "\u2717"}
                     </span>
                     <span className="text-kipiai-dark">{claim.text}</span>
                   </div>
@@ -154,4 +161,4 @@ export function ResultCard({ result, index }: ResultCardProps) {
       )}
     </div>
   );
-}
+});

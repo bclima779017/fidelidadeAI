@@ -1,12 +1,25 @@
 """Pydantic models para validação de request/response da API."""
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+import re
 
 
 # ── Extract ──
 
 class ExtractRequest(BaseModel):
-    url: str = Field(..., description="URL do site para extrair conteúdo")
+    url: str = Field(..., min_length=1, max_length=2048, description="URL do site para extrair conteúdo")
+
+    @field_validator("url")
+    @classmethod
+    def validate_url_format(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError("URL não informada.")
+        if not re.match(r"^https?://", v, re.IGNORECASE):
+            v = "https://" + v
+        if not re.match(r"^https?://[a-zA-Z0-9]", v, re.IGNORECASE):
+            raise ValueError("URL com formato inválido.")
+        return v
 
 
 class ExtractResponse(BaseModel):
@@ -19,14 +32,23 @@ class ExtractResponse(BaseModel):
 # ── Evaluate ──
 
 class QuestionInput(BaseModel):
-    question: str = Field(..., description="Pergunta estratégica")
-    official_answer: str = Field(..., description="Resposta oficial esperada (ground truth)")
+    question: str = Field(..., min_length=1, max_length=1000, description="Pergunta estratégica")
+    official_answer: str = Field(..., min_length=1, max_length=10_000, description="Resposta oficial esperada (ground truth)")
 
 
 class EvaluateRequest(BaseModel):
-    context: str = Field(..., description="Conteúdo extraído do site (contexto)")
-    questions: list[QuestionInput] = Field(..., description="Lista de perguntas com respostas oficiais")
-    api_key: str = Field(..., description="Chave da API Gemini")
+    context: str = Field(..., min_length=1, max_length=1_000_000, description="Conteúdo extraído do site (contexto)")
+    questions: list[QuestionInput] = Field(..., min_length=1, max_length=10, description="Lista de perguntas com respostas oficiais")
+    api_key: str | None = Field(None, description="Chave da API Gemini (opcional — usa env var se ausente)")
+
+    @field_validator("api_key")
+    @classmethod
+    def sanitize_api_key(cls, v: str | None) -> str | None:
+        if v is not None:
+            v = v.strip()
+            if not v:
+                return None
+        return v
 
 
 class EvaluateResult(BaseModel):
@@ -42,6 +64,7 @@ class EvaluateResult(BaseModel):
     hallucinations: list[str] = []
     justificativa: str = ""
     fontes: list[str] = []
+    context_truncated: bool = False
 
 
 # ── Health ──

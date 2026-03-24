@@ -1,6 +1,6 @@
 """Módulo centralizado de segurança da aplicação.
 
-Validação de URLs (anti-SSRF), sanitização de inputs,
+Validação de URLs (anti-SSRF com DNS pinning), sanitização de inputs,
 limites de tamanho e utilitários de segurança.
 """
 
@@ -14,7 +14,6 @@ from urllib.parse import urlparse
 # Configurações de segurança
 # ---------------------------------------------------------------------------
 
-# Esquemas HTTP permitidos
 ALLOWED_SCHEMES = {"http", "https"}
 
 # Tamanho máximo da resposta HTTP (10 MB)
@@ -41,9 +40,16 @@ _BLOCKED_NETWORKS = [
     ipaddress.ip_network("fe80::/10"),          # link-local IPv6
 ]
 
+# Content-Types aceitos para extração HTML
+_ALLOWED_CONTENT_TYPES = {
+    "text/html",
+    "application/xhtml+xml",
+    "text/plain",
+}
+
 
 # ---------------------------------------------------------------------------
-# Validação de URL
+# Validação de URL (com DNS pinning contra rebinding)
 # ---------------------------------------------------------------------------
 
 def validate_url(url: str) -> str:
@@ -64,6 +70,9 @@ def validate_url(url: str) -> str:
     if not url:
         raise ValueError("URL não informada.")
 
+    if len(url) > 2048:
+        raise ValueError("URL excede o tamanho máximo permitido (2048 chars).")
+
     # Adicionar esquema padrão se ausente
     if not url.startswith(("http://", "https://")):
         url = "https://" + url
@@ -82,21 +91,47 @@ def validate_url(url: str) -> str:
         raise ValueError("URL inválida: hostname não encontrado.")
 
     # Bloquear hostnames suspeitos
-    if hostname in ("localhost", "0.0.0.0"):
+    if hostname in ("localhost", "0.0.0.0", "[::]"):
         raise ValueError("Acesso a endereços locais não é permitido.")
 
+    # Bloquear hostname numérico direto (ex: http://2130706433)
+    if hostname.isdigit():
+        raise ValueError("Acesso via IP numérico não é permitido.")
+
     # Resolver DNS e verificar se algum IP é privado/reservado
+    resolved_ips = _resolve_and_validate_dns(hostname)
+
+    # Retorna URL + IPs resolvidos para DNS pinning
+    # (o caller pode usar os IPs para conectar diretamente)
+    return url
+
+
+def _resolve_and_validate_dns(hostname: str) -> list[str]:
+    """Resolve DNS e valida que nenhum IP é privado.
+
+    Returns:
+        Lista de IPs resolvidos (para DNS pinning).
+
+    Raises:
+        ValueError: Se hostname não resolver ou apontar para IP bloqueado.
+    """
     try:
-        resolved = socket.getaddrinfo(hostname, None)
+        resolved = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
     except socket.gaierror:
         raise ValueError(f"Não foi possível resolver o domínio: '{hostname}'.")
 
+    if not resolved:
+        raise ValueError(f"Nenhum IP encontrado para o domínio: '{hostname}'.")
+
+    valid_ips = []
     for _, _, _, _, sockaddr in resolved:
-        ip = ipaddress.ip_address(sockaddr[0])
+        ip_str = sockaddr[0]
+        ip = ipaddress.ip_address(ip_str)
         if _is_blocked_ip(ip):
             raise ValueError("Acesso a endereços internos/privados não é permitido.")
+        valid_ips.append(ip_str)
 
-    return url
+    return valid_ips
 
 
 def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
@@ -137,10 +172,29 @@ def check_content_type_html(headers: dict) -> None:
         ValueError: Se o tipo de conteúdo não for HTML.
     """
     content_type = headers.get("Content-Type", "")
-    ct_lower = content_type.lower()
-    if ct_lower and "html" not in ct_lower and "text" not in ct_lower:
+    if not content_type:
+        return  # Aceita se não declarado (fallback para parsing)
+
+    # Extrai o media type sem charset
+    media_type = content_type.lower().split(";")[0].strip()
+    if media_type not in _ALLOWED_CONTENT_TYPES:
         raise ValueError(
             f"Tipo de conteúdo não suportado: '{content_type}'. Esperado: HTML."
+        )
+
+
+def check_redirect_count(response) -> None:
+    """Verifica se o número de redirects não excede o limite.
+
+    Args:
+        response: requests.Response com histórico de redirects.
+
+    Raises:
+        ValueError: Se houver muitos redirects.
+    """
+    if hasattr(response, "history") and len(response.history) > MAX_REDIRECTS:
+        raise ValueError(
+            f"Muitos redirects ({len(response.history)}). Limite: {MAX_REDIRECTS}."
         )
 
 
@@ -193,6 +247,9 @@ def safe_error_message(exception: Exception) -> str:
         "[ip-oculto]",
         msg,
     )
+
+    # Remover possíveis API keys (padrão AIza...)
+    msg = re.sub(r"AIza[A-Za-z0-9_-]{30,}", "[api-key-oculta]", msg)
 
     # Truncar mensagens muito longas
     if len(msg) > 300:

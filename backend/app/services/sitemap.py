@@ -1,12 +1,15 @@
 """Descoberta de URLs de um site via sitemap.xml ou crawling de links internos."""
 
-import xml.etree.ElementTree as ET
+import logging
 from urllib.parse import urljoin, urlparse
 
 import requests
 from bs4 import BeautifulSoup
+from defusedxml.ElementTree import fromstring, ParseError as XMLParseError
 
 import config
+
+logger = logging.getLogger("kipiai.sitemap")
 
 # Padrões de URL a excluir por padrão
 _EXCLUDE_PATTERNS = [
@@ -28,7 +31,7 @@ def _is_same_domain(url: str, base_domain: str) -> bool:
     """Verifica se a URL pertence ao mesmo domínio base."""
     try:
         return urlparse(url).netloc.replace("www.", "") == base_domain.replace("www.", "")
-    except Exception:
+    except (ValueError, AttributeError):
         return False
 
 
@@ -43,8 +46,8 @@ def _parse_sitemap_xml(content: str, base_domain: str, max_pages: int) -> list[d
     """Parseia um sitemap.xml e retorna lista de URLs."""
     urls = []
     try:
-        root = ET.fromstring(content)
-    except ET.ParseError:
+        root = fromstring(content)
+    except (XMLParseError, Exception):
         return []
 
     ns = ""
@@ -64,7 +67,8 @@ def _parse_sitemap_xml(content: str, base_domain: str, max_pages: int) -> list[d
                     resp.raise_for_status()
                     child_urls = _parse_sitemap_xml(resp.text, base_domain, max_pages - len(urls))
                     urls.extend(child_urls)
-                except Exception:
+                except (requests.RequestException, XMLParseError) as e:
+                    logger.debug("Falha ao buscar sitemap child %s: %s", loc.text, e)
                     continue
         return urls[:max_pages]
 
@@ -110,7 +114,7 @@ def _discover_from_sitemap(base_url: str, base_domain: str, max_pages: int) -> l
                     sitemap_url = line.split(":", 1)[1].strip()
                     if ":" in sitemap_url:
                         sitemap_urls_to_try.append(sitemap_url)
-    except Exception:
+    except requests.RequestException:
         pass
 
     # Fallback: tenta URLs comuns de sitemap
@@ -133,7 +137,8 @@ def _discover_from_sitemap(base_url: str, base_domain: str, max_pages: int) -> l
                 urls = _parse_sitemap_xml(resp.text, base_domain, max_pages)
                 if urls:
                     return urls
-        except Exception:
+        except (requests.RequestException, XMLParseError) as e:
+            logger.debug("Falha ao buscar sitemap %s: %s", sitemap_url, e)
             continue
 
     return []
@@ -147,7 +152,7 @@ def _discover_from_links(base_url: str, base_domain: str, max_pages: int) -> lis
     try:
         resp = requests.get(base_url, headers=config.SCRAPER_HEADERS, timeout=15)
         resp.raise_for_status()
-    except Exception:
+    except requests.RequestException:
         return []
 
     soup = BeautifulSoup(resp.text, "html.parser")

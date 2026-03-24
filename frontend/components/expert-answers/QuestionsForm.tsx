@@ -1,10 +1,12 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import { useAuditStore } from "@/lib/store";
 import { Card } from "@/components/ui/Card";
 import { TextArea } from "@/components/ui/TextArea";
 import { Button } from "@/components/ui/Button";
+
+const MIN_ANSWER_LENGTH = 10;
 
 const QUESTIONS = [
   {
@@ -40,26 +42,48 @@ const QUESTIONS = [
 ];
 
 export function QuestionsForm() {
-  const { expertAnswers, setAnswer, currentStep, setCurrentStep, setEvaluationStatus } =
-    useAuditStore();
-  const [error, setError] = useState<string | null>(null);
+  const expertAnswers = useAuditStore((s) => s.expertAnswers);
+  const setAnswer = useAuditStore((s) => s.setAnswer);
+  const currentStep = useAuditStore((s) => s.currentStep);
+  const setCurrentStep = useAuditStore((s) => s.setCurrentStep);
+  const setEvaluationStatus = useAuditStore((s) => s.setEvaluationStatus);
+  const [errors, setErrors] = useState<Record<string, string>>({});
 
   const isCompleted = currentStep >= 3;
 
-  function handleSubmit() {
-    const filledCount = Object.values(expertAnswers).filter(
-      (a) => a && a.trim()
-    ).length;
+  const validate = useCallback((): boolean => {
+    const newErrors: Record<string, string> = {};
+    let hasAnyFilled = false;
 
-    if (filledCount === 0) {
-      setError("Preencha pelo menos uma resposta para prosseguir");
-      return;
+    for (const q of QUESTIONS) {
+      const value = (expertAnswers[q.key] || "").trim();
+      if (value) {
+        hasAnyFilled = true;
+        if (value.length < MIN_ANSWER_LENGTH) {
+          newErrors[q.key] = `Resposta muito curta (minimo ${MIN_ANSWER_LENGTH} caracteres)`;
+        }
+      }
     }
 
-    setError(null);
+    if (!hasAnyFilled) {
+      newErrors._global = "Preencha pelo menos uma resposta para prosseguir";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  }, [expertAnswers]);
+
+  const handleSubmit = useCallback(() => {
+    if (!validate()) return;
+
+    setErrors({});
     setEvaluationStatus("running");
     setCurrentStep(3);
-  }
+  }, [validate, setEvaluationStatus, setCurrentStep]);
+
+  const filledCount = Object.values(expertAnswers).filter(
+    (a) => a && a.trim().length >= MIN_ANSWER_LENGTH
+  ).length;
 
   return (
     <Card title="2. Respostas do Especialista">
@@ -75,22 +99,40 @@ export function QuestionsForm() {
             label={q.label}
             placeholder={q.placeholder}
             value={expertAnswers[q.key] || ""}
-            onChange={(e) => setAnswer(q.key, e.target.value)}
+            onChange={(e) => {
+              setAnswer(q.key, e.target.value);
+              // Limpa erro individual ao digitar
+              if (errors[q.key]) {
+                setErrors((prev) => {
+                  const next = { ...prev };
+                  delete next[q.key];
+                  return next;
+                });
+              }
+            }}
             disabled={isCompleted}
             rows={3}
+            error={errors[q.key]}
+            aria-required="true"
+            maxLength={10000}
           />
         ))}
       </div>
 
-      {error && (
-        <p className="mt-3 text-sm text-kipiai-red">{error}</p>
+      {errors._global && (
+        <p className="mt-3 text-sm text-kipiai-red" role="alert">
+          {errors._global}
+        </p>
       )}
 
       {!isCompleted && (
-        <div className="mt-6">
+        <div className="mt-6 flex items-center gap-4">
           <Button onClick={handleSubmit}>
             Avaliar Fidelidade
           </Button>
+          <span className="text-sm text-kipiai-gray">
+            {filledCount}/5 perguntas preenchidas
+          </span>
         </div>
       )}
     </Card>

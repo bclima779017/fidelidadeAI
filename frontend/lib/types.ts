@@ -18,14 +18,25 @@ export interface ClaimAnalysis {
 }
 
 export interface EvaluateResult {
-  question_index: number;
   question: string;
-  expert_answer: string;
-  ai_answer: string;
+  official_answer: string;
+  resposta_ia: string;
   score: number;
-  semantic_match?: number;
-  claims_rate?: number;
+  score_gemini_original?: number | null;
+  match_semantico?: number | null;
+  taxa_claims?: number | null;
+  claims_preservados?: string[];
+  claims_omitidos?: string[];
+  hallucinations?: string[];
   justificativa?: string;
+  fontes?: string[];
+  context_truncated?: boolean;
+  // Campos de compatibilidade com o frontend
+  question_index?: number;
+  expert_answer?: string;
+  ai_answer?: string;
+  semantic_match?: number | null;
+  claims_rate?: number | null;
   claims?: ClaimAnalysis[];
 }
 
@@ -50,6 +61,7 @@ export interface EvaluationSSEData {
   current?: number;
   total?: number;
   result?: EvaluateResult;
+  data?: EvaluateResult;
   weighted_score?: number;
   health?: EvalHealth;
   message?: string;

@@ -1,11 +1,15 @@
 """Extração de texto visível de páginas web (página única e multi-página)."""
 
+import logging
+
 import requests
 from bs4 import BeautifulSoup
 
 import config
 import security
 from utils import clean_html_tags
+
+logger = logging.getLogger("kipiai.scraper")
 
 
 def extract_site_content(url: str) -> str:
@@ -22,10 +26,11 @@ def _extract_single_page(url: str) -> dict:
     """
     url = security.validate_url(url)
     response = requests.get(
-        url, headers=config.SCRAPER_HEADERS, timeout=30,
+        url, headers=config.SCRAPER_HEADERS, timeout=(5, 30),
         allow_redirects=True, stream=True,
     )
     response.raise_for_status()
+    security.check_redirect_count(response)
     security.check_content_length(response.headers)
     security.check_content_type_html(response.headers)
     raw = response.content[:security.MAX_RESPONSE_BYTES]
@@ -81,8 +86,8 @@ def extract_multi_page_content(urls: list[str], progress_callback=None, health=N
                         "url": page["url"],
                         "char_count": page["char_count"],
                     })
-        except Exception as e:
-            print(f"  [AVISO] Falha ao extrair {url}: {e}")
+        except (requests.RequestException, ValueError) as e:
+            logger.warning("Falha ao extrair %s: %s", url[:80], e)
             continue
 
     if progress_callback:

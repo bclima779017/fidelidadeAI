@@ -2,6 +2,7 @@
 
 import functools
 import json
+import logging
 import os
 
 import numpy as np
@@ -43,8 +44,8 @@ def load_knowledge() -> tuple[list[dict], np.ndarray] | None:
     with open(KB_PATH, "r", encoding="utf-8") as f:
         kb = json.load(f)
 
-    data = np.load(EMB_PATH)
-    embeddings = data["embeddings"]
+    with np.load(EMB_PATH) as data:
+        embeddings = data["embeddings"].copy()
 
     return kb, embeddings
 
@@ -101,8 +102,8 @@ def match_suggestions(results: list[dict], top_k: int = 5) -> list[dict]:
         for p_key in perguntas_rel:
             if p_key in scores_by_key:
                 score, pergunta_texto = scores_by_key[p_key]
-                if score < 80:
-                    gaps.append(80 - score)
+                if score < config.SUGGESTION_THRESHOLD_SCORE:
+                    gaps.append(config.SUGGESTION_THRESHOLD_SCORE - score)
                     perguntas_afetadas.append(f"{pergunta_texto} ({score:.0f})")
 
         # Recomendacao so ativa se ao menos 1 pergunta relacionada tem gap
@@ -179,7 +180,8 @@ Responda EXCLUSIVAMENTE em JSON:
         response = model.generate_content(prompt)
         parsed, _ = parse_json_response(response.text)
         return parsed
-    except Exception:
+    except (ConnectionError, TimeoutError, ValueError, RuntimeError) as e:
+        logging.getLogger("kipiai.suggestions").warning("Falha ao contextualizar sugestão: %s", e)
         return {
             "sugestao_contextualizada": implementacao,
             "exemplo_antes": "",

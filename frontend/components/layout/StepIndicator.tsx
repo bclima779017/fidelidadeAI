@@ -4,12 +4,10 @@ import React from "react";
 import { useAuditStore } from "@/lib/store";
 
 const steps = [
-  { label: "Selecao de site", step: 1 },
-  { label: "Selecao de paginas", step: 2 },
-  { label: "Interpretacao", step: 3 },
-  { label: "Chunking", step: 4 },
-  { label: "Respostas", step: 5 },
-  { label: "Relatorio", step: 6 },
+  { label: "URL do site", step: 1 },
+  { label: "Respostas do especialista", step: 2 },
+  { label: "Avaliacao", step: 3 },
+  { label: "Resultados", step: 4 },
 ];
 
 export function StepIndicator() {
@@ -27,13 +25,18 @@ export function StepIndicator() {
           const isFuture = currentStep < item.step;
 
           return (
-            <li key={item.step} className="relative flex items-start gap-3">
+            <li
+              key={item.step}
+              className="relative flex items-start gap-3"
+              aria-current={isCurrent ? "step" : undefined}
+            >
               {/* Connecting line */}
               {index < steps.length - 1 && (
                 <div
                   className={`absolute left-[11px] top-6 w-0.5 h-6 ${
                     isCompleted ? "bg-kipiai-green" : "bg-gray-700"
                   }`}
+                  aria-hidden="true"
                 />
               )}
 
@@ -50,6 +53,7 @@ export function StepIndicator() {
                       : "bg-gray-700 text-gray-500"
                   }
                 `}
+                aria-hidden="true"
               >
                 {isCompleted ? (
                   <svg

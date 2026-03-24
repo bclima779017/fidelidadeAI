@@ -1,5 +1,7 @@
 """Prompt de auditoria GEO e chamada ao Gemini para avaliação de fidelidade."""
 
+import logging
+import threading
 import time
 
 import numpy as np
@@ -8,6 +10,8 @@ import google.generativeai as genai
 import config
 from scoring import calcular_score_pergunta
 from utils import cosine_similarity, embed_texts, ensure_genai_configured, parse_json_response
+
+logger = logging.getLogger("kipiai.ai_handler")
 
 _SYSTEM_INSTRUCTION = (
     "Você é um auditor RIGOROSO especializado em GEO (Generative Engine Optimization) e "
@@ -27,27 +31,29 @@ _SYSTEM_INSTRUCTION = (
     "3. PRESERVAÇÃO DE CLAIMS: Nenhuma afirmação da marca deve ser omitida, inventada ou alterada."
 )
 
-# Cache do modelo para evitar recriar a cada chamada
+# Thread-safe model cache
+_model_lock = threading.Lock()
 _cached_model = None
 _cached_api_key = None
 
 
 def _get_model(api_key: str) -> genai.GenerativeModel:
-    """Retorna o modelo Gemini, configurando a API key se necessário."""
+    """Retorna o modelo Gemini, configurando a API key se necessário (thread-safe)."""
     global _cached_model, _cached_api_key
-    if _cached_model is None or api_key != _cached_api_key:
-        ensure_genai_configured(api_key)
-        _cached_model = genai.GenerativeModel(
-            model_name=config.GEMINI_MODEL_NAME,
-            system_instruction=_SYSTEM_INSTRUCTION,
-            generation_config=genai.GenerationConfig(
-                temperature=0,
-                top_p=1.0,
-                top_k=1,
-            ),
-        )
-        _cached_api_key = api_key
-    return _cached_model
+    with _model_lock:
+        if _cached_model is None or api_key != _cached_api_key:
+            ensure_genai_configured(api_key)
+            _cached_model = genai.GenerativeModel(
+                model_name=config.GEMINI_MODEL_NAME,
+                system_instruction=_SYSTEM_INSTRUCTION,
+                generation_config=genai.GenerationConfig(
+                    temperature=0,
+                    top_p=1.0,
+                    top_k=1,
+                ),
+            )
+            _cached_api_key = api_key
+        return _cached_model
 
 
 def _compute_semantic_similarity(text_a: str, text_b: str) -> float:
@@ -64,7 +70,6 @@ def _compute_semantic_similarity(text_a: str, text_b: str) -> float:
     emb_b = np.array(embeddings[1], dtype=np.float32)
 
     similarity = cosine_similarity(emb_a, emb_b)
-    # Cosseno vai de -1 a 1; clampamos em [0, 1] e convertemos para 0-100
     return max(0.0, min(similarity, 1.0)) * 100
 
 
@@ -72,20 +77,26 @@ def _compute_claims_rate(claims_preservados: list, claims_omitidos: list) -> flo
     """Calcula a taxa de atingimento de claims.
 
     Returns:
-        Percentual de claims atingidos (0-100).
+        Percentual de claims atingidos (0-100). Retorna 0 se não há claims.
     """
     total = len(claims_preservados) + len(claims_omitidos)
     if total == 0:
-        return 100.0  # Se não há claims, considera 100%
+        return 0.0
     return (len(claims_preservados) / total) * 100
 
 
-def build_prompt(context: str, question: str, official_answer: str, rag_mode: bool = False, health=None) -> str:
-    """Constrói o prompt de auditoria GEO."""
+def build_prompt(context: str, question: str, official_answer: str, rag_mode: bool = False, health=None) -> tuple[str, bool]:
+    """Constrói o prompt de auditoria GEO.
+
+    Returns:
+        Tuple (prompt_text, context_was_truncated).
+    """
+    context_truncated = False
     if len(context) > config.MAX_CONTEXT_CHARS:
         original_len = len(context)
         context = context[:config.MAX_CONTEXT_CHARS]
-        print("  [AVISO] Contexto truncado para 100.000 caracteres.")
+        context_truncated = True
+        logger.warning("Contexto truncado de %d para %d chars.", original_len, config.MAX_CONTEXT_CHARS)
         if health is not None:
             health.context_truncated = True
             health.context_original_chars = original_len
@@ -100,7 +111,7 @@ def build_prompt(context: str, question: str, official_answer: str, rag_mode: bo
             "Considere TODOS os trechos ao formular sua resposta.\n"
         )
 
-    return f"""## TAREFA DE AUDITORIA
+    prompt = f"""## TAREFA DE AUDITORIA
 {rag_note}
 ### Conteúdo original do site da marca (CONTEXTO):
 {context}
@@ -139,6 +150,8 @@ INSTRUÇÕES:
   "justificativa": "Explicação concisa do score, citando claims preservados ou perdidos"
 }}"""
 
+    return prompt, context_truncated
+
 
 def evaluate_question(context: str, question: str, official_answer: str, api_key: str = "", rag=None, health=None) -> dict:
     """Envia o prompt para o Gemini e retorna o resultado parseado.
@@ -166,14 +179,14 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
         try:
             context, sources = rag.retrieve(question)
             rag_mode = True
-        except Exception as e:
-            print(f"  [AVISO] Falha no retrieval RAG ({e}), usando contexto agregado.")
+        except (ConnectionError, TimeoutError, ValueError) as e:
+            logger.warning("Falha no retrieval RAG (%s), usando contexto agregado.", e)
             if health is not None:
                 health.total_retries += 1
                 health.retry_details.append({"question": question[:80], "attempt": 0, "reason": "rag_retrieve_error", "wait_s": 0})
 
     model = _get_model(api_key)
-    prompt = build_prompt(context, question, official_answer, rag_mode=rag_mode, health=health)
+    prompt, context_truncated = build_prompt(context, question, official_answer, rag_mode=rag_mode, health=health)
 
     max_retries = config.MAX_RETRIES
     for attempt in range(max_retries):
@@ -190,6 +203,7 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
                     "resposta_ia": "",
                     "score": -1,
                     "justificativa": "[BLOQUEADO] Resposta filtrada pelo modelo (safety filter).",
+                    "context_truncated": context_truncated,
                 }
                 if sources:
                     result["fontes"] = sources
@@ -208,7 +222,7 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
             if resposta_ia and result.get("score", -1) >= 0:
                 try:
                     match_semantico = _compute_semantic_similarity(official_answer, resposta_ia)
-                except Exception:
+                except (ConnectionError, TimeoutError, ValueError):
                     match_semantico = 0.0
 
                 taxa_claims = _compute_claims_rate(claims_pres, claims_omit)
@@ -219,31 +233,37 @@ def evaluate_question(context: str, question: str, official_answer: str, api_key
                 result["taxa_claims"] = round(taxa_claims, 1)
                 result["score"] = round(score_composto, 1)
 
+            result["context_truncated"] = context_truncated
             if sources:
                 result["fontes"] = sources
             return result
 
         except Exception as e:
             error_msg = str(e).lower()
-            if attempt < max_retries - 1 and ("quota" in error_msg or "429" in error_msg or "resource" in error_msg):
+            is_rate_limit = any(k in error_msg for k in ("quota", "429", "resource"))
+            if attempt < max_retries - 1:
                 wait = 2 ** (attempt + 1)
-                print(f"  [RETRY] Rate limit Gemini, aguardando {wait}s...")
+                if is_rate_limit:
+                    logger.warning("Rate limit Gemini, aguardando %ds...", wait)
+                else:
+                    logger.warning("Erro Gemini (%s), tentando novamente em %ds...", e, wait)
                 if health is not None:
                     health.total_retries += 1
-                    health.retry_details.append({"question": question[:80], "attempt": attempt + 1, "reason": "rate_limit", "wait_s": wait})
-                time.sleep(wait)
-            elif attempt < max_retries - 1:
-                wait = 2 ** (attempt + 1)
-                print(f"  [RETRY] Erro Gemini ({e}), tentando novamente em {wait}s...")
-                if health is not None:
-                    health.total_retries += 1
-                    health.retry_details.append({"question": question[:80], "attempt": attempt + 1, "reason": "other", "wait_s": wait})
+                    health.retry_details.append({
+                        "question": question[:80],
+                        "attempt": attempt + 1,
+                        "reason": "rate_limit" if is_rate_limit else "other",
+                        "wait_s": wait,
+                    })
                 time.sleep(wait)
             else:
+                safe_msg = str(e)[:200]
+                logger.error("Falha após %d tentativas: %s", max_retries, safe_msg)
                 result = {
                     "resposta_ia": "",
                     "score": -1,
-                    "justificativa": f"[ERRO] Falha após {max_retries} tentativas: {e}",
+                    "justificativa": f"[ERRO] Falha após {max_retries} tentativas.",
+                    "context_truncated": context_truncated,
                 }
                 if sources:
                     result["fontes"] = sources

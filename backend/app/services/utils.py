@@ -1,7 +1,9 @@
 """Funções utilitárias compartilhadas entre módulos."""
 
 import json
+import logging
 import re
+import threading
 import time
 
 import numpy as np
@@ -9,16 +11,20 @@ import google.generativeai as genai
 
 import config
 
-# ── Estado global da configuração Gemini ──
+logger = logging.getLogger("kipiai.utils")
+
+# ── Estado global da configuração Gemini (thread-safe) ──
+_config_lock = threading.Lock()
 _configured_api_key: str | None = None
 
 
 def ensure_genai_configured(api_key: str) -> None:
-    """Configura a API Gemini apenas se a key mudou."""
+    """Configura a API Gemini apenas se a key mudou (thread-safe)."""
     global _configured_api_key
-    if api_key != _configured_api_key:
-        genai.configure(api_key=api_key)
-        _configured_api_key = api_key
+    with _config_lock:
+        if api_key != _configured_api_key:
+            genai.configure(api_key=api_key)
+            _configured_api_key = api_key
 
 
 def cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
@@ -61,7 +67,7 @@ def embed_texts(texts: list[str] | str) -> list[list[float]]:
             is_retryable = any(k in error_msg for k in ("429", "quota", "resource", "unavailable", "deadline"))
             if attempt < config.MAX_RETRIES - 1 and is_retryable:
                 wait = 2 ** (attempt + 1)
-                print(f"  [RETRY] Embedding falhou ({e}), aguardando {wait}s...")
+                logger.warning("Embedding falhou (%s), aguardando %ds...", e, wait)
                 time.sleep(wait)
             else:
                 raise

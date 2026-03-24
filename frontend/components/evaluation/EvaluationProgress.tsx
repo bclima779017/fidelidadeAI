@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useCallback } from "react";
 import { useAuditStore } from "@/lib/store";
 import { connectEvaluation } from "@/lib/sse";
 import { Card } from "@/components/ui/Card";
 import { ProgressBar } from "@/components/ui/ProgressBar";
+import { Button } from "@/components/ui/Button";
 
 const QUESTION_LABELS = [
   "Proposta de valor",
@@ -15,32 +16,30 @@ const QUESTION_LABELS = [
 ];
 
 export function EvaluationProgress() {
-  const {
-    url,
-    extractedContent,
-    expertAnswers,
-    evaluationStatus,
-    evaluationProgress,
-    results,
-    setEvaluationStatus,
-    setEvaluationProgress,
-    addResult,
-    setWeightedScore,
-    setHealth,
-    setCurrentStep,
-  } = useAuditStore();
+  const url = useAuditStore((s) => s.url);
+  const extractedContent = useAuditStore((s) => s.extractedContent);
+  const expertAnswers = useAuditStore((s) => s.expertAnswers);
+  const evaluationStatus = useAuditStore((s) => s.evaluationStatus);
+  const evaluationProgress = useAuditStore((s) => s.evaluationProgress);
+  const results = useAuditStore((s) => s.results);
+  const errorMessage = useAuditStore((s) => s.errorMessage);
+  const setEvaluationStatus = useAuditStore((s) => s.setEvaluationStatus);
+  const setEvaluationProgress = useAuditStore((s) => s.setEvaluationProgress);
+  const setErrorMessage = useAuditStore((s) => s.setErrorMessage);
+  const addResult = useAuditStore((s) => s.addResult);
+  const setWeightedScore = useAuditStore((s) => s.setWeightedScore);
+  const setHealth = useAuditStore((s) => s.setHealth);
+  const setCurrentStep = useAuditStore((s) => s.setCurrentStep);
+  const resetEvaluation = useAuditStore((s) => s.resetEvaluation);
 
+  const abortControllerRef = useRef<AbortController | null>(null);
   const startedRef = useRef(false);
 
-  useEffect(() => {
-    if (evaluationStatus !== "running" || startedRef.current) return;
+  const startEvaluation = useCallback(() => {
+    if (startedRef.current) return;
     startedRef.current = true;
 
-    const totalQuestions = Object.keys(expertAnswers).filter(
-      (k) => expertAnswers[k]?.trim()
-    ).length;
-
-    connectEvaluation(
+    const controller = connectEvaluation(
       {
         url,
         content: extractedContent,
@@ -64,12 +63,53 @@ export function EvaluationProgress() {
           setCurrentStep(4);
         },
         onError: (error) => {
-          console.error("Evaluation error:", error);
+          setErrorMessage(error);
           setEvaluationStatus("error");
         },
       }
     );
-  }, [evaluationStatus]);
+
+    abortControllerRef.current = controller;
+  }, [
+    url,
+    extractedContent,
+    expertAnswers,
+    setEvaluationProgress,
+    addResult,
+    setWeightedScore,
+    setHealth,
+    setEvaluationStatus,
+    setCurrentStep,
+    setErrorMessage,
+  ]);
+
+  useEffect(() => {
+    if (evaluationStatus !== "running") return;
+
+    startEvaluation();
+
+    return () => {
+      // Cleanup: aborta conexão SSE se componente desmontar
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, [evaluationStatus, startEvaluation]);
+
+  const handleRetry = useCallback(() => {
+    startedRef.current = false;
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    resetEvaluation();
+    // Pequeno delay para garantir que o estado resetou antes de re-disparar
+    setTimeout(() => {
+      setEvaluationStatus("running");
+      setCurrentStep(3);
+    }, 100);
+  }, [resetEvaluation, setEvaluationStatus, setCurrentStep]);
 
   const totalQuestions = Object.keys(expertAnswers).filter(
     (k) => expertAnswers[k]?.trim()
@@ -102,7 +142,7 @@ export function EvaluationProgress() {
         </div>
 
         {/* Individual question status */}
-        <div className="space-y-2">
+        <div className="space-y-2" role="list" aria-label="Status das perguntas">
           {QUESTION_LABELS.slice(0, totalQuestions).map((label, index) => {
             const hasResult = index < results.length;
             const isEvaluating =
@@ -111,6 +151,7 @@ export function EvaluationProgress() {
             return (
               <div
                 key={index}
+                role="listitem"
                 className="flex items-center gap-3 text-sm"
               >
                 <div
@@ -121,6 +162,7 @@ export function EvaluationProgress() {
                       ? "bg-kipiai-blue text-white animate-pulse"
                       : "bg-gray-200 text-gray-400"
                   }`}
+                  aria-hidden="true"
                 >
                   {hasResult ? (
                     <svg
@@ -164,8 +206,13 @@ export function EvaluationProgress() {
         </div>
 
         {isError && (
-          <div className="bg-red-50 border border-kipiai-red/20 rounded-lg p-3 text-sm text-kipiai-red">
-            Ocorreu um erro durante a avaliacao. Tente novamente.
+          <div className="bg-red-50 border border-kipiai-red/20 rounded-lg p-4 space-y-3">
+            <p className="text-sm text-kipiai-red">
+              {errorMessage || "Ocorreu um erro durante a avaliacao."}
+            </p>
+            <Button variant="danger" size="sm" onClick={handleRetry}>
+              Tentar novamente
+            </Button>
           </div>
         )}
       </div>
