@@ -1,5 +1,33 @@
 # Histórico de Implementação — Kípiai Audit
 
+## Sessão 2026-03-24 #2 — UX/Animações e Polish Visual
+**Foco:** 10 melhorias de experiência, animação e dark mode no frontend Next.js
+- Motion (framer-motion): transições AnimatePresence entre steps do wizard, staggered reveals nos ResultCards, expand/collapse animado
+- Score Gauge radial: SVG animado substituindo números grandes nos ScoreCards, arco preenche com easing + cor dinâmica
+- Sonner toasts: notificações por pergunta avaliada, conclusão e erros sem bloquear a UI
+- Skeleton loading: placeholders pulsantes nos ScoreCards e ResultCards durante carregamento dinâmico
+- Confetti (canvas-confetti): burst celebratório quando Score Final >= 90
+- Dark mode: `next-themes` + toggle sol/lua no sidebar, `dark:` em todos os componentes (inputs, cards, tabelas, backgrounds, scrollbars)
+- Tooltips (Floating UI): hover nos indicadores de saúde explica cada métrica
+- Auto-animate (@formkit): lista de perguntas anima ao adicionar resultados SSE
+- Count-up nos gauges: scores animam de 0 ao valor final
+- Novos componentes: `ScoreGauge`, `Tooltip`, `Skeleton`, `ThemeToggle`, `Providers`
+- **Decisões:** Motion com LazyMotion (~15KB) em vez de react-spring; Sonner em vez de react-hot-toast (menor bundle); SVG custom em vez de lib de charts; dark mode via class strategy (Tailwind)
+
+## Sessão 2026-03-24 #1 — Frontend Next.js: Segurança, Sitemap, RAG e Avaliação
+**Foco:** Migração completa do fluxo Streamlit para Next.js + FastAPI, segurança OWASP, e correção de bugs críticos
+- Revisão OWASP: CORS restritivo, rate limiting (slowapi), API key via header, XXE protection (defusedxml), DNS rebinding, input validation Pydantic
+- Estabilidade: Error Boundary, AbortController no SSE, thread safety (threading.Lock), logging estruturado, exception handling específico
+- Performance: React.memo, code splitting (next/dynamic), Zustand selectors otimizados, a11y (aria-label, role, scope)
+- Sitemap multi-página: endpoints `/api/sitemap/discover` e `/api/extract/multi/stream` (SSE por página), UI com tabela de seleção + barra de progresso
+- RAG indexing: endpoints `/api/rag/index`, `/api/rag/stats`, `/api/rag/clear`, integrado na avaliação SSE
+- Fix crítico SSE: payload mismatch (`content`→`context`, `expert_answers`→`questions`), React StrictMode abortava conexão (removido cleanup de abort)
+- Modal de boas-vindas: overlay fixo com 6 passos + escala de scores, localStorage para dismiss
+- Selo de saúde: badge Excelente/Boa/Mediana/Fraca no HealthPanel com lógica de classificação
+- Health + weighted_score emitidos no evento `done` do SSE
+- Timeout SSE aumentado de 2min para 10min
+- **Decisões:** SSE callbacks com `useAuditStore.getState()` em vez de closures React (evita StrictMode issues); constantes centralizadas em `constants.ts`; overlay manual em vez de `<dialog>` nativo (compatibilidade)
+
 ## Sessão 2026-03-20 #3 — UX, Scoring, Sugestões e Governança
 **Foco:** Propostas de UX, painel de saúde, scoring composto, módulo de sugestões First Claim e protocolo de sessão
 - Levantamento de 5 propostas de melhoria de UX/informação; usuário escolheu painel de saúde (4) para implementar

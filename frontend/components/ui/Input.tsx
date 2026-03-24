@@ -15,7 +15,7 @@ export function Input({ label, error, className = "", id, ...props }: InputProps
       {label && (
         <label
           htmlFor={inputId}
-          className="block text-sm font-medium text-kipiai-dark mb-1.5"
+          className="block text-sm font-medium text-kipiai-dark dark:text-gray-200 mb-1.5"
         >
           {label}
         </label>
@@ -23,11 +23,12 @@ export function Input({ label, error, className = "", id, ...props }: InputProps
       <input
         id={inputId}
         className={`
-          w-full px-4 py-2.5 border border-gray-300 rounded-lg
+          w-full px-4 py-2.5 border border-gray-300 dark:border-gray-600 rounded-lg
+          bg-white dark:bg-gray-900
           focus:outline-none focus:ring-2 focus:ring-kipiai-blue focus:border-transparent
-          placeholder-gray-400 text-kipiai-dark
+          placeholder-gray-400 text-kipiai-dark dark:text-gray-100
           transition-shadow duration-200
-          disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-gray-100
+          disabled:opacity-60 disabled:cursor-not-allowed disabled:bg-gray-100 dark:disabled:bg-gray-800
           ${error ? "border-kipiai-red ring-1 ring-kipiai-red" : ""}
           ${className}
         `}

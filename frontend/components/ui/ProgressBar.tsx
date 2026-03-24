@@ -42,7 +42,7 @@ export function ProgressBar({
         </div>
       )}
       <div
-        className={`w-full bg-gray-200 rounded-full overflow-hidden ${heightStyles[height]}`}
+        className={`w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden ${heightStyles[height]}`}
       >
         <div
           className={`${getScoreColor(clampedValue)} ${heightStyles[height]} rounded-full transition-all duration-500 ease-out`}

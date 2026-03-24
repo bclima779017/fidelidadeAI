@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Providers } from "@/components/Providers";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -18,16 +19,18 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" suppressHydrationWarning>
       <body className={inter.className}>
-        <ErrorBoundary>
-          <div className="flex min-h-screen">
-            <Sidebar />
-            <main className="flex-1 ml-0 md:ml-[280px] min-h-screen bg-gray-50">
-              {children}
-            </main>
-          </div>
-        </ErrorBoundary>
+        <Providers>
+          <ErrorBoundary>
+            <div className="flex min-h-screen">
+              <Sidebar />
+              <main className="flex-1 ml-0 md:ml-[280px] min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors">
+                {children}
+              </main>
+            </div>
+          </ErrorBoundary>
+        </Providers>
       </body>
     </html>
   );

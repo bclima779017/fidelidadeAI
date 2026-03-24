@@ -20,7 +20,7 @@ export function Card({
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className={`bg-white rounded-xl shadow-md p-6 ${className}`}>
+    <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 ${className}`}>
       {title && (
         <div
           className={`flex items-center justify-between mb-4 ${
@@ -28,7 +28,7 @@ export function Card({
           }`}
           onClick={collapsible ? () => setOpen(!open) : undefined}
         >
-          <h3 className="text-lg font-semibold text-kipiai-dark">{title}</h3>
+          <h3 className="text-lg font-semibold text-kipiai-dark dark:text-white">{title}</h3>
           {collapsible && (
             <svg
               xmlns="http://www.w3.org/2000/svg"
