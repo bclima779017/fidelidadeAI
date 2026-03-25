@@ -6,11 +6,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copiar código
+# Copiar código (knowledge/ já está dentro de backend/)
 COPY . .
-
-# Copiar knowledge base do diretório raiz (se existir)
-COPY knowledge/ /app/knowledge/ 2>/dev/null || true
 
 EXPOSE 8000
 
