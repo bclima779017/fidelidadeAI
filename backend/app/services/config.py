@@ -57,7 +57,7 @@ EMB_PATH = os.path.join(KNOWLEDGE_DIR, "embeddings.npz")
 
 # ── CORS (FastAPI) ──
 _cors_env = os.getenv("CORS_ORIGINS", "http://localhost:3000")
-CORS_ORIGINS = [origin.strip() for origin in _cors_env.split(",") if origin.strip()]
+CORS_ORIGINS = [origin.strip().rstrip("/") for origin in _cors_env.split(",") if origin.strip()]
 
 # ── Rate Limiting ──
 RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "10"))
