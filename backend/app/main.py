@@ -32,6 +32,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger("kipiai")
 
+# ── Diagnóstico de configuração no startup ──
+logger.info("=" * 60)
+logger.info("CORS_ORIGINS configurado: %s", config.CORS_ORIGINS)
+logger.info("GEMINI_API_KEY presente: %s", bool(config.GEMINI_API_KEY))
+logger.info("PORT: %s", os.getenv("PORT", "(não definido, default 8000)"))
+logger.info("=" * 60)
+
 # ── Rate Limiter ──
 limiter = Limiter(key_func=get_remote_address)
 
@@ -78,6 +85,24 @@ app.add_middleware(
     allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "Accept"],
 )
+
+
+# ── Request logging middleware ──
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    origin = request.headers.get("origin", "(sem origin)")
+    logger.info(
+        "→ %s %s | origin=%s | client=%s",
+        request.method, request.url.path, origin,
+        request.client.host if request.client else "unknown",
+    )
+    response = await call_next(request)
+    logger.info(
+        "← %s %s | status=%d | cors=%s",
+        request.method, request.url.path, response.status_code,
+        response.headers.get("access-control-allow-origin", "(ausente)"),
+    )
+    return response
 
 
 # ── Global exception handler ──

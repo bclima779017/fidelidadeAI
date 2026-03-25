@@ -10,6 +10,9 @@ const BASE_URL =
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 
+// Diagnóstico: loga a URL base no primeiro carregamento
+console.info(`[API] BASE_URL = "${BASE_URL}" (env=${process.env.NEXT_PUBLIC_API_URL || "não definido"})`);
+
 class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) {
@@ -34,6 +37,7 @@ async function fetchApi<T>(
     : controller.signal;
 
   try {
+    console.info(`[API] → ${fetchOptions.method || "GET"} ${url}`);
     const response = await fetch(url, {
       headers: {
         "Content-Type": "application/json",
@@ -43,6 +47,8 @@ async function fetchApi<T>(
       signal,
     });
 
+    console.info(`[API] ← ${response.status} ${url}`);
+
     if (!response.ok) {
       let errorMessage = `Erro ${response.status}`;
       try {
@@ -51,17 +57,20 @@ async function fetchApi<T>(
       } catch {
         // keep default
       }
+      console.error(`[API] ERRO: ${errorMessage} | URL: ${url}`);
       throw new ApiError(errorMessage, response.status);
     }
 
     return response.json();
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
+      console.warn(`[API] TIMEOUT após ${timeoutMs}ms: ${url}`);
       throw new ApiError(
         "A requisicao excedeu o tempo limite. Tente novamente.",
         408
       );
     }
+    console.error(`[API] FALHA: ${error instanceof Error ? error.message : error} | URL: ${url}`);
     throw error;
   } finally {
     clearTimeout(timeoutId);
