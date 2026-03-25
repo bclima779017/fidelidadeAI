@@ -85,7 +85,7 @@ export default function HomePage() {
             className="inline-flex items-center gap-2 bg-kipiai-blue hover:bg-kipiai-blue-hover text-white font-semibold py-3 px-8 rounded-xl transition-colors text-lg shadow-md hover:shadow-lg"
           >
             Iniciar Auditoria
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
             </svg>
           </Link>

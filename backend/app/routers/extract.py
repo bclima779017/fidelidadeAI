@@ -27,7 +27,7 @@ async def extract_content(request: Request, body: ExtractRequest) -> ExtractResp
         raise HTTPException(status_code=400, detail=security.safe_error_message(e))
 
     try:
-        page = scraper._extract_single_page(url)
+        page = await scraper.extract_single_page_async(url)
         return ExtractResponse(
             url=page["url"],
             title=page["title"],

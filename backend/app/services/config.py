@@ -39,12 +39,22 @@ POOR_EXTRACTION_THRESHOLD = 500   # chars
 THIN_CHUNK_THRESHOLD = 200        # chars
 
 # ── HTTP ──
+HTTP_TIMEOUT = 30.0           # Timeout total para requests HTTP
+HTTP_CONNECT_TIMEOUT = 10.0   # Timeout de conexão
+HTTP_KEEPALIVE_EXPIRY = 30.0  # Expiração de keepalive
+
 SCRAPER_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     )
 }
+
+# ── Knowledge Base ──
+import os as _os
+KNOWLEDGE_DIR = _os.path.join(_os.path.dirname(__file__), "..", "..", "knowledge")
+KB_PATH = _os.path.join(KNOWLEDGE_DIR, "knowledge_base.json")
+EMB_PATH = _os.path.join(KNOWLEDGE_DIR, "embeddings.npz")
 
 # ── CORS (FastAPI) ──
 _cors_env = os.getenv("CORS_ORIGINS", "http://localhost:3000")

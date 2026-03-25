@@ -2,7 +2,6 @@
 
 import React, { memo, useMemo, useEffect, useRef } from "react";
 import { motion } from "motion/react";
-import confetti from "canvas-confetti";
 import { useAuditStore } from "@/lib/store";
 import { ScoreGauge } from "@/components/ui/ScoreGauge";
 
@@ -24,15 +23,17 @@ export const ScoreCards = memo(function ScoreCards() {
     };
   }, [results, weightedScore]);
 
-  // Confetti for high scores
+  // Confetti for high scores (dynamic import to save ~20KB from bundle)
   useEffect(() => {
     if (finalScore >= 90 && !confettiFired.current) {
       confettiFired.current = true;
-      confetti({
-        particleCount: 100,
-        spread: 70,
-        origin: { y: 0.6 },
-        colors: ["#28a745", "#116dff", "#ffc107"],
+      import("canvas-confetti").then((mod) => {
+        mod.default({
+          particleCount: 100,
+          spread: 70,
+          origin: { y: 0.6 },
+          colors: ["#28a745", "#116dff", "#ffc107"],
+        });
       });
     }
   }, [finalScore]);

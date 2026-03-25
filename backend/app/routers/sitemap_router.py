@@ -32,7 +32,7 @@ async def discover_urls(request: Request, body: SitemapRequest) -> SitemapRespon
     except ValueError as e:
         raise HTTPException(status_code=400, detail=security.safe_error_message(e))
     try:
-        urls = sitemap_service.discover_urls(url, max_pages=body.max_pages)
+        urls = await sitemap_service.discover_urls(url, max_pages=body.max_pages)
         return SitemapResponse(urls=[UrlInfo(**u) for u in urls], total=len(urls))
     except Exception as e:
         logger.error("Erro ao descobrir URLs de %s: %s", body.url[:80], e)

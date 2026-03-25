@@ -1,9 +1,12 @@
-"""Descoberta de URLs de um site via sitemap.xml ou crawling de links internos."""
+"""Descoberta de URLs de um site via sitemap.xml ou crawling de links internos.
+
+Totalmente async via httpx.AsyncClient para não bloquear o event loop do FastAPI.
+"""
 
 import logging
 from urllib.parse import urljoin, urlparse
 
-import requests
+import httpx
 from bs4 import BeautifulSoup
 from defusedxml.ElementTree import fromstring, ParseError as XMLParseError
 
@@ -18,6 +21,9 @@ _EXCLUDE_PATTERNS = [
     ".pdf", ".jpg", ".png", ".gif", ".svg", ".css", ".js",
     "/cart", "/checkout", "/my-account", "/login", "/register",
 ]
+
+# Timeout HTTP para requests do sitemap
+_SITEMAP_TIMEOUT = httpx.Timeout(15.0, connect=10.0)
 
 
 def _normalize_url(url: str) -> str:
@@ -42,12 +48,18 @@ def _should_exclude(url: str, exclude_patterns: list[str] | None = None) -> bool
     return any(p in url_lower for p in patterns)
 
 
-def _parse_sitemap_xml(content: str, base_domain: str, max_pages: int, _depth: int = 0) -> list[dict]:
+async def _parse_sitemap_xml(
+    client: httpx.AsyncClient,
+    content: str,
+    base_domain: str,
+    max_pages: int,
+    _depth: int = 0,
+) -> list[dict]:
     """Parseia um sitemap.xml e retorna lista de URLs (max depth 3)."""
     if _depth > 3:
         logger.warning("Sitemap recursion depth limit (3) atingido")
         return []
-    urls = []
+    urls: list[dict] = []
     try:
         root = fromstring(content)
     except (XMLParseError, Exception):
@@ -66,11 +78,13 @@ def _parse_sitemap_xml(content: str, base_domain: str, max_pages: int, _depth: i
             loc = sitemap_tag.find(f"{ns}loc")
             if loc is not None and loc.text:
                 try:
-                    resp = requests.get(loc.text.strip(), headers=config.SCRAPER_HEADERS, timeout=15)
+                    resp = await client.get(loc.text.strip())
                     resp.raise_for_status()
-                    child_urls = _parse_sitemap_xml(resp.text, base_domain, max_pages - len(urls), _depth + 1)
+                    child_urls = await _parse_sitemap_xml(
+                        client, resp.text, base_domain, max_pages - len(urls), _depth + 1
+                    )
                     urls.extend(child_urls)
-                except (requests.RequestException, XMLParseError) as e:
+                except (httpx.HTTPError, XMLParseError) as e:
                     logger.debug("Falha ao buscar sitemap child %s: %s", loc.text, e)
                     continue
         return urls[:max_pages]
@@ -100,24 +114,29 @@ def _parse_sitemap_xml(content: str, base_domain: str, max_pages: int, _depth: i
     return urls[:max_pages]
 
 
-def _discover_from_sitemap(base_url: str, base_domain: str, max_pages: int) -> list[dict]:
-    """Tenta descobrir URLs via robots.txt → sitemap.xml."""
+async def _discover_from_sitemap(
+    client: httpx.AsyncClient,
+    base_url: str,
+    base_domain: str,
+    max_pages: int,
+) -> list[dict]:
+    """Tenta descobrir URLs via robots.txt -> sitemap.xml."""
     parsed = urlparse(base_url)
     origin = f"{parsed.scheme}://{parsed.netloc}"
 
-    sitemap_urls_to_try = []
+    sitemap_urls_to_try: list[str] = []
 
     # Tenta robots.txt primeiro
     try:
         robots_url = f"{origin}/robots.txt"
-        resp = requests.get(robots_url, headers=config.SCRAPER_HEADERS, timeout=10)
+        resp = await client.get(robots_url)
         if resp.status_code == 200:
             for line in resp.text.splitlines():
                 if line.strip().lower().startswith("sitemap:"):
                     sitemap_url = line.split(":", 1)[1].strip()
                     if ":" in sitemap_url:
                         sitemap_urls_to_try.append(sitemap_url)
-    except requests.RequestException:
+    except httpx.HTTPError:
         pass
 
     # Fallback: tenta URLs comuns de sitemap
@@ -130,32 +149,37 @@ def _discover_from_sitemap(base_url: str, base_domain: str, max_pages: int) -> l
 
     for sitemap_url in sitemap_urls_to_try:
         try:
-            resp = requests.get(sitemap_url, headers=config.SCRAPER_HEADERS, timeout=15)
+            resp = await client.get(sitemap_url)
             if resp.status_code == 200 and "xml" in resp.headers.get("content-type", "").lower():
-                urls = _parse_sitemap_xml(resp.text, base_domain, max_pages)
+                urls = await _parse_sitemap_xml(client, resp.text, base_domain, max_pages)
                 if urls:
                     return urls
             # Tenta parsear mesmo sem content-type xml
             if resp.status_code == 200 and "<urlset" in resp.text[:500]:
-                urls = _parse_sitemap_xml(resp.text, base_domain, max_pages)
+                urls = await _parse_sitemap_xml(client, resp.text, base_domain, max_pages)
                 if urls:
                     return urls
-        except (requests.RequestException, XMLParseError) as e:
+        except (httpx.HTTPError, XMLParseError) as e:
             logger.debug("Falha ao buscar sitemap %s: %s", sitemap_url, e)
             continue
 
     return []
 
 
-def _discover_from_links(base_url: str, base_domain: str, max_pages: int) -> list[dict]:
+async def _discover_from_links(
+    client: httpx.AsyncClient,
+    base_url: str,
+    base_domain: str,
+    max_pages: int,
+) -> list[dict]:
     """Fallback: extrai links internos do homepage (profundidade 1)."""
-    urls = []
-    seen = set()
+    urls: list[dict] = []
+    seen: set[str] = set()
 
     try:
-        resp = requests.get(base_url, headers=config.SCRAPER_HEADERS, timeout=15)
+        resp = await client.get(base_url)
         resp.raise_for_status()
-    except requests.RequestException:
+    except httpx.HTTPError:
         return []
 
     soup = BeautifulSoup(resp.text, "html.parser")
@@ -189,24 +213,31 @@ def _discover_from_links(base_url: str, base_domain: str, max_pages: int) -> lis
     return urls[:max_pages]
 
 
-def discover_urls(base_url: str, max_pages: int = 50) -> list[dict]:
+async def discover_urls(base_url: str, max_pages: int = 50) -> list[dict]:
     """Descobre URLs de um site via sitemap.xml ou crawling de links.
+
+    Totalmente async — não bloqueia o event loop.
 
     Retorna lista de dicts com {url, lastmod, source}.
     source pode ser: "sitemap", "link", "homepage".
     """
     base_domain = urlparse(base_url).netloc
 
-    # Tenta sitemap primeiro
-    urls = _discover_from_sitemap(base_url, base_domain, max_pages)
+    async with httpx.AsyncClient(
+        timeout=_SITEMAP_TIMEOUT,
+        follow_redirects=True,
+        headers=config.SCRAPER_HEADERS,
+    ) as client:
+        # Tenta sitemap primeiro
+        urls = await _discover_from_sitemap(client, base_url, base_domain, max_pages)
 
-    if urls:
-        # Garante que a homepage está incluída
-        normalized_base = _normalize_url(base_url)
-        if not any(u["url"] == normalized_base for u in urls):
-            urls.insert(0, {"url": normalized_base, "lastmod": "", "source": "homepage"})
-            urls = urls[:max_pages]
-        return urls
+        if urls:
+            # Garante que a homepage está incluída
+            normalized_base = _normalize_url(base_url)
+            if not any(u["url"] == normalized_base for u in urls):
+                urls.insert(0, {"url": normalized_base, "lastmod": "", "source": "homepage"})
+                urls = urls[:max_pages]
+            return urls
 
-    # Fallback: crawling de links
-    return _discover_from_links(base_url, base_domain, max_pages)
+        # Fallback: crawling de links
+        return await _discover_from_links(client, base_url, base_domain, max_pages)

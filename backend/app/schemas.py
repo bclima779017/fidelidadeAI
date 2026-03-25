@@ -1,7 +1,6 @@
 """Pydantic models para validação de request/response da API."""
 
 from pydantic import BaseModel, Field, field_validator
-import re
 
 
 # ── Extract ──
@@ -11,14 +10,13 @@ class ExtractRequest(BaseModel):
 
     @field_validator("url")
     @classmethod
-    def validate_url_format(cls, v: str) -> str:
+    def normalize_url(cls, v: str) -> str:
+        """Normaliza URL (strip + prefixo https). Validação robusta via security.validate_url() nos routers."""
         v = v.strip()
         if not v:
             raise ValueError("URL não informada.")
-        if not re.match(r"^https?://", v, re.IGNORECASE):
+        if not v.startswith(("http://", "https://")):
             v = "https://" + v
-        if not re.match(r"^https?://[a-zA-Z0-9]", v, re.IGNORECASE):
-            raise ValueError("URL com formato inválido.")
         return v
 
 
@@ -75,11 +73,12 @@ class SitemapRequest(BaseModel):
 
     @field_validator("url")
     @classmethod
-    def validate_url_format(cls, v: str) -> str:
+    def normalize_url(cls, v: str) -> str:
+        """Normaliza URL (strip + prefixo https). Validação robusta via security.validate_url() nos routers."""
         v = v.strip()
         if not v:
             raise ValueError("URL não informada.")
-        if not re.match(r"^https?://", v, re.IGNORECASE):
+        if not v.startswith(("http://", "https://")):
             v = "https://" + v
         return v
 

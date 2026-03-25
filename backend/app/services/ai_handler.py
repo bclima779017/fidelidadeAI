@@ -240,27 +240,3 @@ async def evaluate_question_async(
                 if sources:
                     result["fontes"] = sources
                 return result
-
-
-# ── Compat: função síncrona para código legado (Streamlit) ──
-
-def evaluate_question(context: str, question: str, official_answer: str, api_key: str = "", rag=None, health=None) -> dict:
-    """Wrapper sync para evaluate_question_async."""
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(
-                    asyncio.run,
-                    evaluate_question_async(context, question, official_answer, api_key, rag, health)
-                )
-                return future.result()
-        else:
-            return asyncio.run(
-                evaluate_question_async(context, question, official_answer, api_key, rag, health)
-            )
-    except RuntimeError:
-        return asyncio.run(
-            evaluate_question_async(context, question, official_answer, api_key, rag, health)
-        )

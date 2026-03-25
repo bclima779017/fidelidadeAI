@@ -175,7 +175,7 @@ export function connectMultiExtract(
                   case "failed": callbacks.onFailed(parsed); break;
                   case "done": callbacks.onDone(parsed); break;
                 }
-              } catch {}
+              } catch { /* ignore malformed SSE JSON */ }
               eventData = "";
             }
           }

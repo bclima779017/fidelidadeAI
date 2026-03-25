@@ -2,12 +2,13 @@
 
 import re
 import math
+from collections.abc import Callable
 from urllib.parse import urlparse
 
 import numpy as np
 
 import config
-from utils import cosine_similarity, embed_texts, ensure_genai_configured
+from utils import cosine_similarity, embed_texts_sync, get_genai_client
 
 # Keywords por pergunta para retrieval híbrido
 _QUESTION_KEYWORDS = {
@@ -136,11 +137,16 @@ class AuditRAG:
 
     def __init__(self, api_key: str):
         self.api_key = api_key
-        ensure_genai_configured(api_key)
+        get_genai_client(api_key)
         self._chunks: list[dict] = []  # {text, url, title, page_type, embedding}
         self._ingested = False
 
-    def ingest(self, page_contents: list[dict], progress_callback=None, health=None) -> int:
+    def ingest(
+        self,
+        page_contents: list[dict],
+        progress_callback: Callable[[float, str], None] | None = None,
+        health: "EvalHealth | None" = None,
+    ) -> int:
         """Ingere conteúdo de múltiplas páginas: chunka e embeda.
 
         Args:
@@ -191,7 +197,7 @@ class AuditRAG:
             end = min(start + batch_size, len(all_chunks))
             batch_texts = [c["text"] for c in all_chunks[start:end]]
 
-            embeddings = embed_texts(batch_texts)
+            embeddings = embed_texts_sync(self.api_key, batch_texts)
 
             for i, embedding in enumerate(embeddings):
                 all_chunks[start + i]["embedding"] = np.array(embedding, dtype=np.float32)
@@ -221,7 +227,7 @@ class AuditRAG:
             return "", []
 
         # Embeda a query
-        query_emb_list = embed_texts(query)
+        query_emb_list = embed_texts_sync(self.api_key, query)
         query_embedding = np.array(query_emb_list[0], dtype=np.float32)
 
         question_key = _get_question_key(query)
@@ -304,7 +310,7 @@ class AuditRAG:
             "chunks_per_page": pages,
         }
 
-    def clear(self):
+    def clear(self) -> None:
         """Limpa o índice."""
         self._chunks = []
         self._ingested = False

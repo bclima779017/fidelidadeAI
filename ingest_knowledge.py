@@ -10,12 +10,14 @@ import os
 import sys
 
 import numpy as np
-import google.generativeai as genai
+
+# Adiciona o diretório de services ao path para imports do backend
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "backend", "app", "services"))
 
 import config
-from utils import ensure_genai_configured, embed_texts, parse_json_response
+from utils import get_genai_client, embed_texts_sync, parse_json_response
 
-KNOWLEDGE_DIR = os.path.join(os.path.dirname(__file__), "knowledge")
+KNOWLEDGE_DIR = os.path.join(os.path.dirname(__file__), "backend", "knowledge")
 RAW_DIR = os.path.join(KNOWLEDGE_DIR, "raw")
 OUTPUT_JSON = os.path.join(KNOWLEDGE_DIR, "knowledge_base.json")
 OUTPUT_EMB = os.path.join(KNOWLEDGE_DIR, "embeddings.npz")
@@ -92,13 +94,14 @@ def _find_pdf() -> str:
 
 def _structure_with_gemini(text: str, api_key: str) -> list[dict]:
     """Envia o texto ao Gemini para estruturação em JSON."""
-    ensure_genai_configured(api_key)
-    model = genai.GenerativeModel(
-        model_name=config.GEMINI_MODEL_NAME,
-        generation_config=genai.GenerationConfig(temperature=0, top_p=1.0, top_k=1),
-    )
+    from google.genai import types
 
-    response = model.generate_content(_STRUCTURING_PROMPT + text)
+    client = get_genai_client(api_key)
+    response = client.models.generate_content(
+        model=config.GEMINI_MODEL_NAME,
+        contents=_STRUCTURING_PROMPT + text,
+        config=types.GenerateContentConfig(temperature=0, top_p=1.0, top_k=1),
+    )
 
     parsed, _ = parse_json_response(response.text)
     if isinstance(parsed, list):
@@ -108,14 +111,12 @@ def _structure_with_gemini(text: str, api_key: str) -> list[dict]:
 
 def _generate_embeddings(initiatives: list[dict], api_key: str) -> np.ndarray:
     """Gera embeddings para cada iniciativa (título + descrição)."""
-    ensure_genai_configured(api_key)
-
     texts = [
         f"{init['titulo']}. {init['descricao_profunda']}. {init['implementacao_humana']}"
         for init in initiatives
     ]
 
-    embeddings = embed_texts(texts)
+    embeddings = embed_texts_sync(api_key, texts)
     return np.array(embeddings, dtype=np.float32)
 
 

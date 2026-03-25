@@ -27,48 +27,61 @@
 4. Focar em **o quê** e **por quê**, não em **como**
 
 ## Visão Geral
-Aplicação web Streamlit para auditoria automatizada de fidelidade de respostas RAG/GEO.
+Aplicação web Next.js + FastAPI para auditoria automatizada de fidelidade de respostas RAG/GEO.
 O usuário informa a URL de um site (contexto via scraping), preenche 5 respostas do especialista,
 e a IA compara as respostas extraídas do site com as do especialista, gerando um Score de Fidelidade (0-100).
 
 ## Arquitetura
 
 ```
-app.py               → Interface web Streamlit (entrada/saída principal)
-main.py              → CLI alternativo (loop de auditoria via terminal)
-config.py            → Configuração centralizada: variáveis de ambiente (.env) + constantes do pipeline
-utils.py             → Funções utilitárias compartilhadas (cosine_similarity, embed_texts, ensure_genai_configured, parse_json_response, clean_html_tags)
-scraper.py           → Extração de texto visível (página única + multi-página)
-sitemap.py           → Descoberta de URLs via sitemap.xml ou crawling de links
-rag.py               → Pipeline RAG: chunking + embedding + retrieval semântico
-scoring.py           → Perguntas, pesos, scoring composto (semântico + claims)
-ai_handler.py        → Prompt de auditoria + chamada Gemini 2.5 Flash (temp=0)
-health.py            → EvalHealth: 5 indicadores de qualidade da avaliação
-suggestions.py       → Motor de matching: resultados → sugestões First-Claim rankeadas
-ingest_knowledge.py  → Script offline: PDF → knowledge_base.json + embeddings.npz
-report_handler.py    → Relatório .xlsx (Resultados + Metadados RAG + Sugestões)
-knowledge/           → Base de conhecimento persistida (JSON + embeddings do Protocolo First-Claim)
-HISTORY.md           → Histórico de sessões de desenvolvimento (lido pelo Claude ao iniciar)
+backend/
+  app/
+    main.py                → FastAPI app: CORS, rate limiting, routers, lifespan
+    schemas.py             → Modelos Pydantic (request/response validation)
+    routers/
+      extract.py           → POST /api/extract (página única, async)
+      evaluate.py          → POST /api/evaluate (SSE: progress, result, done, error)
+      sitemap_router.py    → POST /api/sitemap/discover + /api/extract/multi/stream (SSE)
+      rag_router.py        → POST /api/rag/index, GET /api/rag/stats, DELETE /api/rag/clear
+    services/
+      config.py            → Configuração centralizada: .env + constantes + paths knowledge base
+      utils.py             → Funções utilitárias (cosine_similarity, embed_texts_sync/async, parse_json_response)
+      scraper.py           → Extração async de texto visível (httpx.AsyncClient)
+      sitemap.py           → Descoberta async de URLs via sitemap.xml ou crawling (httpx)
+      rag.py               → Pipeline RAG: chunking + embedding + retrieval semântico
+      scoring.py           → Perguntas, pesos, scoring composto (semântico + claims)
+      ai_handler.py        → Prompt de auditoria + chamada Gemini async (google-genai SDK)
+      health.py            → EvalHealth: 5 indicadores de qualidade da avaliação
+      suggestions.py       → Motor de matching: resultados → sugestões First-Claim rankeadas
+      security.py          → Validação de URLs (anti-SSRF, DNS pinning), sanitização
+      report_handler.py    → Relatório .xlsx (Resultados + Metadados RAG + Sugestões)
+  knowledge/               → Base de conhecimento persistida (JSON + embeddings)
+
+frontend/
+  app/                     → Next.js App Router (pages, layout, globals.css)
+  components/              → Componentes React (UI, layout, results, evaluation)
+  lib/                     → Store (Zustand), API client, SSE client, types, constants
+
+ingest_knowledge.py        → Script offline: PDF → knowledge_base.json + embeddings.npz
+HISTORY.md                 → Histórico de sessões de desenvolvimento
 ```
 
-## Fluxo de Execução (Streamlit)
+## Fluxo de Execução (Next.js + FastAPI)
 
-### Modo Página Única (legado)
-1. Usuário informa URL do site → scraper extrai texto visível
+### Modo Página Única
+1. Usuário informa URL → POST /api/extract → scraper async extrai texto visível
 2. Usuário preenche respostas do especialista para 5 perguntas fixas
-3. Para cada pergunta, envia prompt de auditoria ao Gemini
-4. IA retorna JSON com `resposta_ia`, `score` (0-100), `justificativa`
-5. Resultados exibidos na interface com score cards e tabela
-6. Download de relatório Excel (.xlsx)
+3. POST /api/evaluate via SSE: para cada pergunta, Gemini avalia
+4. Frontend recebe eventos SSE (progress, result, done) e atualiza UI em tempo real
+5. Resultados com score cards, gauges animados e tabela expandível
 
 ### Modo Site Completo (RAG)
-1. Usuário informa URL → sitemap.py descobre páginas (sitemap.xml ou links)
+1. Usuário informa URL → POST /api/sitemap/discover → sitemap async descobre páginas
 2. Usuário seleciona páginas em tabela com checkboxes
-3. scraper.py extrai conteúdo de cada página (com título/URL)
-4. rag.py chunka (~500 tokens) e embeda via Gemini gemini-embedding-001
-5. Para cada pergunta: retrieval híbrido (keyword + semântico) → top-10 chunks
-6. ai_handler.py envia contexto focado ao Gemini com atribuição de fonte
-7. Resultados com source attribution + relatório Excel com aba de metadados RAG
+3. POST /api/extract/multi/stream (SSE) → scraper async extrai em paralelo com progresso
+4. POST /api/rag/index → chunking (~500 tokens) + embedding via gemini-embedding-001
+5. Avaliação SSE com retrieval híbrido (keyword + semântico) → top-10 chunks por pergunta
+6. Resultados com source attribution + relatório Excel
 
 ## 5 Perguntas Fixas
 1. Qual é a proposta de valor da marca?
@@ -90,10 +103,9 @@ HISTORY.md           → Histórico de sessões de desenvolvimento (lido pelo Cl
 - **0-29**: Incorreta, contraditória ou alucinada
 
 ## Configuração
-- Copiar `.env.example` → `.env` e preencher `GEMINI_API_KEY` (ou informar na interface)
-- Instalar dependências: `pip install -r requirements.txt`
-- Executar Streamlit: `streamlit run app.py`
-- Executar CLI: `python main.py`
+- Copiar `.env.example` → `.env` e preencher `GEMINI_API_KEY`
+- Backend: `cd backend && pip install -r requirements.txt && uvicorn app.main:app --reload` (porta 8000)
+- Frontend: `cd frontend && npm install && npm run dev` (porta 3000)
 
 ## Modelo de IA
 - **Gemini 2.5 Flash** com `temperature=0`, `top_p=1.0`, `top_k=1`
@@ -109,8 +121,11 @@ HISTORY.md           → Histórico de sessões de desenvolvimento (lido pelo Cl
 - **Orçamento**: ~10 chunks x ~500 tokens = ~5k tokens de contexto focado por pergunta
 
 ## Convenções
-- Linguagem do código: Python 3.10+
-- Comentários e prints em português (PT-BR)
+- Linguagem do código: Python 3.10+ (backend), TypeScript (frontend)
+- Comentários em português (PT-BR), logging via módulo `logging`
+- Backend 100% async (httpx, google-genai async, FastAPI)
+- SDK Google: `from google import genai` (novo SDK google-genai, não google-generativeai)
 - Módulos independentes com responsabilidade única
 - Retries com backoff exponencial para API Gemini
-- Contexto truncado a 100k caracteres para respeitar limites do modelo (modo legado)
+- Contexto truncado a 100k caracteres para respeitar limites do modelo
+- Frontend: Next.js 14+ App Router, Tailwind CSS, Zustand, Motion, Sonner toasts

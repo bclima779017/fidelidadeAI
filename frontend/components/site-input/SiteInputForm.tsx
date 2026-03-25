@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useRef } from "react";
+import { toast } from "sonner";
 import { useAuditStore } from "@/lib/store";
 import { extractContent, discoverSitemap, connectMultiExtract, indexRAG } from "@/lib/api";
 import { MAX_URL_LENGTH, MIN_CONTENT_LENGTH } from "@/lib/constants";
@@ -72,7 +73,9 @@ export function SiteInputForm() {
       }
       setCurrentStep(2);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao extrair conteudo");
+      const msg = err instanceof Error ? err.message : "Erro ao extrair conteudo";
+      setError(msg);
+      toast.error(msg, { duration: 4000 });
     } finally { setLoading(false); setLoadingPhase(""); }
   }, [url, validateUrl, setContent, setCurrentStep]);
 
@@ -89,7 +92,9 @@ export function SiteInputForm() {
       }
       setDiscoveredUrls(result.urls);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao descobrir paginas");
+      const msg = err instanceof Error ? err.message : "Erro ao descobrir paginas";
+      setError(msg);
+      toast.error(msg, { duration: 4000 });
     } finally { setLoading(false); setLoadingPhase(""); }
   }, [url, validateUrl, setDiscoveredUrls]);
 
@@ -154,6 +159,7 @@ export function SiteInputForm() {
       onError: (err) => {
         setExtractionProgress(null);
         setError(err);
+        toast.error(err, { duration: 4000 });
         setLoading(false);
         setLoadingPhase("");
       },
@@ -186,7 +192,8 @@ export function SiteInputForm() {
 
         {/* Seletor de modo */}
         {!isCompleted && !loading && discoveredUrls.length === 0 && (
-          <div className="flex items-center gap-4">
+          <fieldset className="flex items-center gap-4">
+            <legend className="sr-only">Modo de extracao</legend>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input type="radio" name="mode" checked={extractionMode === "single"}
                 onChange={() => setExtractionMode("single")} className="accent-kipiai-blue" />
@@ -197,7 +204,7 @@ export function SiteInputForm() {
                 onChange={() => setExtractionMode("multi")} className="accent-kipiai-blue" />
               Site completo (sitemap)
             </label>
-          </div>
+          </fieldset>
         )}
 
         {/* Botões de ação */}
@@ -238,7 +245,7 @@ export function SiteInputForm() {
         {/* Loading para fases não-SSE (RAG indexing) */}
         {loading && !extractionProgress && loadingPhase && (
           <div className="flex items-center gap-2 text-sm text-kipiai-blue">
-            <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+            <svg aria-hidden="true" className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
             </svg>
@@ -277,7 +284,8 @@ export function SiteInputForm() {
                     <tr key={u.url} className="border-t border-gray-100 hover:bg-gray-50">
                       <td className="px-3 py-1.5 text-center">
                         <input type="checkbox" checked={selectedUrls.includes(u.url)}
-                          onChange={() => toggleUrlSelection(u.url)} className="accent-kipiai-blue" />
+                          onChange={() => toggleUrlSelection(u.url)} className="accent-kipiai-blue"
+                          aria-label={`Selecionar ${u.url}`} />
                       </td>
                       <td className="px-3 py-1.5 text-kipiai-dark truncate max-w-md" title={u.url}>{u.url}</td>
                       <td className="px-3 py-1.5 text-kipiai-gray text-xs">{u.source}</td>

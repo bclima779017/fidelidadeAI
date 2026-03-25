@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 
 import httpx
 from bs4 import BeautifulSoup
@@ -16,7 +17,7 @@ logger = logging.getLogger("kipiai.scraper")
 _http_limits = httpx.Limits(
     max_connections=config.MAX_CONCURRENT_EXTRACTIONS + 2,
     max_keepalive_connections=config.MAX_CONCURRENT_EXTRACTIONS,
-    keepalive_expiry=30.0,
+    keepalive_expiry=config.HTTP_KEEPALIVE_EXPIRY,
 )
 
 
@@ -24,7 +25,7 @@ def _get_async_client() -> httpx.AsyncClient:
     """Cria um AsyncClient httpx com pooling."""
     return httpx.AsyncClient(
         limits=_http_limits,
-        timeout=httpx.Timeout(30.0, connect=10.0),
+        timeout=httpx.Timeout(config.HTTP_TIMEOUT, connect=config.HTTP_CONNECT_TIMEOUT),
         follow_redirects=True,
         headers=config.SCRAPER_HEADERS,
     )
@@ -83,8 +84,8 @@ async def extract_single_page_async(url: str, client: httpx.AsyncClient | None =
 
 async def extract_multi_page_async(
     urls: list[str],
-    on_progress=None,
-    health=None,
+    on_progress: Callable[..., Awaitable[None]] | None = None,
+    health: "EvalHealth | None" = None,
 ) -> list[dict]:
     """Extrai conteúdo de múltiplas URLs em paralelo com semáforo.
 
@@ -129,50 +130,3 @@ async def extract_multi_page_async(
         results = [p for p in pages if p is not None]
 
     return results
-
-
-# ── Compat: funções síncronas usadas pelo código legado (Streamlit) ──
-
-def extract_site_content(url: str) -> str:
-    """Extrai texto visível de uma URL (sync compat)."""
-    page = _extract_single_page(url)
-    return page["content"]
-
-
-def _extract_single_page(url: str) -> dict:
-    """Extrai conteúdo de uma única página (sync, usa httpx sync)."""
-    url = security.validate_url(url)
-    with httpx.Client(
-        timeout=httpx.Timeout(30.0, connect=10.0),
-        follow_redirects=True,
-        headers=config.SCRAPER_HEADERS,
-    ) as client:
-        response = client.get(url)
-        response.raise_for_status()
-        security.check_redirect_count(response)
-        security.check_content_length(dict(response.headers))
-        security.check_content_type_html(dict(response.headers))
-        raw = response.content[:security.MAX_RESPONSE_BYTES]
-        return _parse_html(raw, str(response.url))
-
-
-def extract_multi_page_content(urls: list[str], progress_callback=None, health=None) -> list[dict]:
-    """Extrai múltiplas páginas (sync compat — roda async internamente)."""
-    async def _run():
-        async def _on_progress(current, total, url, status, page):
-            if progress_callback:
-                progress_callback(current / total, f"Extraindo {current}/{total}: {url[:60]}...")
-
-        return await extract_multi_page_async(urls, on_progress=_on_progress, health=health)
-
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # Se já estamos em um event loop (FastAPI), usar to_thread
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor() as pool:
-                return pool.submit(lambda: asyncio.run(_run())).result()
-        else:
-            return asyncio.run(_run())
-    except RuntimeError:
-        return asyncio.run(_run())

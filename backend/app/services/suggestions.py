@@ -3,16 +3,14 @@
 import functools
 import json
 import logging
-import os
 
 import numpy as np
 
 import config
-from utils import ensure_genai_configured, parse_json_response
+from utils import get_genai_client, parse_json_response
 
-KNOWLEDGE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "knowledge")
-KB_PATH = os.path.join(KNOWLEDGE_DIR, "knowledge_base.json")
-EMB_PATH = os.path.join(KNOWLEDGE_DIR, "embeddings.npz")
+KB_PATH = config.KB_PATH
+EMB_PATH = config.EMB_PATH
 
 # Mapeamento de perguntas da auditoria -> chave curta usada na knowledge base
 _QUESTION_KEY_MAP = {
@@ -141,13 +139,9 @@ def contextualize_suggestion(
     Returns:
         Dict com sugestao_contextualizada, exemplo_antes, exemplo_depois.
     """
-    import google.generativeai as genai
+    from google.genai import types
 
-    ensure_genai_configured(api_key)
-    model = genai.GenerativeModel(
-        model_name=config.GEMINI_MODEL_NAME,
-        generation_config=genai.GenerationConfig(temperature=0.3),
-    )
+    client = get_genai_client(api_key)
 
     claims_text = "\n".join(f"- {c}" for c in claims_omitidos) if claims_omitidos else "Nenhum claim omitido especifico."
 
@@ -177,7 +171,11 @@ Responda EXCLUSIVAMENTE em JSON:
 }}"""
 
     try:
-        response = model.generate_content(prompt)
+        response = client.models.generate_content(
+            model=config.GEMINI_MODEL_NAME,
+            contents=prompt,
+            config=types.GenerateContentConfig(temperature=0.3),
+        )
         parsed, _ = parse_json_response(response.text)
         return parsed
     except (ConnectionError, TimeoutError, ValueError, RuntimeError) as e:

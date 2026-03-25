@@ -134,15 +134,3 @@ def clean_html_tags(soup) -> None:
                      "header", "noscript", "iframe", "svg"]):
         tag.decompose()
 
-
-# ── Compat: funções usadas pelo código legado (Streamlit) ──
-
-def ensure_genai_configured(api_key: str) -> None:
-    """Compat: configura o cliente Gemini."""
-    get_genai_client(api_key)
-
-
-def embed_texts(texts: list[str] | str) -> list[list[float]]:
-    """Compat: wrapper sync que usa a API key do config."""
-    api_key = config.GEMINI_API_KEY
-    return embed_texts_sync(api_key, texts)
