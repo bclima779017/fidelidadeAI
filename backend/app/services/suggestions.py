@@ -6,6 +6,7 @@ import logging
 import os
 
 import numpy as np
+from google.genai import types
 
 import config
 from utils import get_genai_client, parse_json_response
@@ -140,8 +141,6 @@ def contextualize_suggestion(
     Returns:
         Dict com sugestao_contextualizada, exemplo_antes, exemplo_depois.
     """
-    from google.genai import types
-
     client = get_genai_client(api_key)
 
     claims_text = "\n".join(f"- {c}" for c in claims_omitidos) if claims_omitidos else "Nenhum claim omitido especifico."

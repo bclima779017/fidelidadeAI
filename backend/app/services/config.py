@@ -51,10 +51,9 @@ SCRAPER_HEADERS = {
 }
 
 # ── Knowledge Base ──
-import os as _os
-KNOWLEDGE_DIR = _os.path.join(_os.path.dirname(__file__), "..", "..", "knowledge")
-KB_PATH = _os.path.join(KNOWLEDGE_DIR, "knowledge_base.json")
-EMB_PATH = _os.path.join(KNOWLEDGE_DIR, "embeddings.npz")
+KNOWLEDGE_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "knowledge")
+KB_PATH = os.path.join(KNOWLEDGE_DIR, "knowledge_base.json")
+EMB_PATH = os.path.join(KNOWLEDGE_DIR, "embeddings.npz")
 
 # ── CORS (FastAPI) ──
 _cors_env = os.getenv("CORS_ORIGINS", "http://localhost:3000")

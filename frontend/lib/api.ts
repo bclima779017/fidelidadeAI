@@ -131,8 +131,10 @@ export function connectMultiExtract(
   }
 ): AbortController {
   const controller = new AbortController();
+  const MULTI_EXTRACT_TIMEOUT_MS = 300_000; // 5 minutos
 
   (async () => {
+    const timeoutId = setTimeout(() => controller.abort(), MULTI_EXTRACT_TIMEOUT_MS);
     try {
       const response = await fetch(`${BASE_URL}/api/extract/multi/stream`, {
         method: "POST",
@@ -186,6 +188,8 @@ export function connectMultiExtract(
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       callbacks.onError(error instanceof Error ? error.message : "Erro de conexao");
+    } finally {
+      clearTimeout(timeoutId);
     }
   })();
 
