@@ -87,24 +87,6 @@ app.add_middleware(
 )
 
 
-# ── Request logging middleware ──
-@app.middleware("http")
-async def log_requests(request: Request, call_next):
-    origin = request.headers.get("origin", "(sem origin)")
-    logger.info(
-        "→ %s %s | origin=%s | client=%s",
-        request.method, request.url.path, origin,
-        request.client.host if request.client else "unknown",
-    )
-    response = await call_next(request)
-    logger.info(
-        "← %s %s | status=%d | cors=%s",
-        request.method, request.url.path, response.status_code,
-        response.headers.get("access-control-allow-origin", "(ausente)"),
-    )
-    return response
-
-
 # ── Global exception handler ──
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
