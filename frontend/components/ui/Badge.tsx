@@ -8,10 +8,13 @@ interface BadgeProps {
 }
 
 function getScoreStyle(score: number): string {
-  if (!Number.isFinite(score) || score < 0) return "bg-gray-100 text-kipiai-gray";
-  if (score >= 70) return "bg-green-100 text-kipiai-green";
-  if (score >= 50) return "bg-yellow-100 text-kipiai-yellow";
-  return "bg-red-100 text-kipiai-red";
+  if (!Number.isFinite(score) || score < 0)
+    return "bg-gray-100 text-kipiai-gray dark:bg-gray-800 dark:text-gray-400";
+  if (score >= 70)
+    return "bg-green-50 text-kipiai-green border border-green-200/50 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800/30";
+  if (score >= 50)
+    return "bg-yellow-50 text-kipiai-yellow border border-yellow-200/50 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800/30";
+  return "bg-red-50 text-kipiai-red border border-red-200/50 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/30";
 }
 
 const sizeStyles = {

@@ -10,7 +10,7 @@ interface ProgressBarProps {
 }
 
 function getScoreColor(value: number): string {
-  if (value >= 70) return "bg-kipiai-green";
+  if (value >= 70) return "bg-gradient-to-r from-kipiai-blue to-kipiai-green";
   if (value >= 50) return "bg-kipiai-yellow";
   return "bg-kipiai-red";
 }
@@ -42,10 +42,10 @@ export function ProgressBar({
         </div>
       )}
       <div
-        className={`w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden ${heightStyles[height]}`}
+        className={`w-full bg-gray-100 dark:bg-gray-800 rounded-full overflow-hidden ${heightStyles[height]}`}
       >
         <div
-          className={`${getScoreColor(clampedValue)} ${heightStyles[height]} rounded-full transition-all duration-500 ease-out`}
+          className={`${getScoreColor(clampedValue)} ${heightStyles[height]} rounded-full transition-all duration-700 ease-out`}
           style={{ width: `${clampedValue}%` }}
         />
       </div>

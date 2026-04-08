@@ -13,19 +13,19 @@ export default function HomePage() {
         transition={{ duration: 0.5 }}
       >
         <motion.h1
-          className="text-5xl font-bold text-kipiai-dark dark:text-white mb-2"
+          className="text-5xl font-bold mb-2"
           initial={{ scale: 0.9 }}
           animate={{ scale: 1 }}
           transition={{ duration: 0.4, delay: 0.1 }}
         >
-          <span className="text-kipiai-blue">Kipiai</span>
+          <span className="gradient-text">Kipiai</span>
         </motion.h1>
-        <p className="text-lg text-kipiai-gray dark:text-gray-400 mb-4">
+        <p className="text-lg text-kipiai-gray dark:text-gray-400 mb-4 tracking-wide">
           Auditoria de Fidelidade GEO
         </p>
 
         <motion.div
-          className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-8 mb-8 text-left"
+          className="bg-white dark:bg-kipiai-gray-800 rounded-xl shadow-kipiai-sm border border-gray-100 dark:border-gray-800/50 p-8 mb-8 text-left"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.2 }}
@@ -51,13 +51,13 @@ export default function HomePage() {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.3, delay: 0.3 + i * 0.08 }}
               >
-                <span className="text-kipiai-blue font-bold mt-0.5">{item.n}.</span>
+                <span className="flex-shrink-0 w-6 h-6 rounded-full bg-kipiai-gradient text-white text-xs font-bold flex items-center justify-center mt-0.5">{item.n}</span>
                 <span><strong>{item.title}</strong> — {item.desc}</span>
               </motion.li>
             ))}
           </ul>
 
-          <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4 border border-gray-100 dark:border-gray-700">
+          <div className="bg-kipiai-gray-50 dark:bg-kipiai-gray-900 rounded-lg p-4 border border-gray-100 dark:border-gray-800/50">
             <h3 className="text-sm font-semibold text-kipiai-dark dark:text-white mb-2">Escala de Score</h3>
             <div className="grid grid-cols-2 gap-2 text-sm">
               {[
@@ -82,10 +82,10 @@ export default function HomePage() {
         >
           <Link
             href="/audit"
-            className="inline-flex items-center gap-2 bg-kipiai-blue hover:bg-kipiai-blue-hover text-white font-semibold py-3 px-8 rounded-xl transition-colors text-lg shadow-md hover:shadow-lg"
+            className="group inline-flex items-center gap-2 bg-kipiai-gradient text-white font-semibold py-3 px-8 rounded-lg transition-all text-lg shadow-kipiai-md hover:shadow-kipiai-lg hover:-translate-y-0.5"
           >
             Iniciar Auditoria
-            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform group-hover:translate-x-1">
               <path d="M5 12h14" /><path d="m12 5 7 7-7 7" />
             </svg>
           </Link>

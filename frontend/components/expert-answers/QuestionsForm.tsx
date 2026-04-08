@@ -91,12 +91,24 @@ export function QuestionsForm() {
 
       {!isCompleted && (
         <div className="mt-6 flex items-center gap-4">
-          <Button onClick={handleSubmit}>
+          <Button variant="gradient" size="lg" onClick={handleSubmit}>
             Avaliar Fidelidade
           </Button>
-          <span className="text-sm text-kipiai-gray">
-            {filledCount}/5 perguntas preenchidas
-          </span>
+          <div className="flex items-center gap-2">
+            <div className="flex gap-0.5">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div
+                  key={i}
+                  className={`w-2 h-2 rounded-full transition-colors duration-300 ${
+                    i < filledCount ? "bg-kipiai-blue" : "bg-gray-200 dark:bg-gray-700"
+                  }`}
+                />
+              ))}
+            </div>
+            <span className="text-sm text-kipiai-gray">
+              {filledCount}/5
+            </span>
+          </div>
         </div>
       )}
     </Card>

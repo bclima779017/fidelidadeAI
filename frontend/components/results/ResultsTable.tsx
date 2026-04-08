@@ -21,7 +21,7 @@ export const ResultsTable = memo(function ResultsTable() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm" aria-label="Tabela de resultados">
             <thead>
-              <tr className="border-b border-gray-200 dark:border-gray-700">
+              <tr className="border-b-2 border-kipiai-blue/10 dark:border-kipiai-blue/5">
                 <th scope="col" className="text-left py-3 px-2 text-kipiai-gray font-medium">Pergunta</th>
                 <th scope="col" className="text-center py-3 px-2 text-kipiai-gray font-medium w-36">Match Semantico</th>
                 <th scope="col" className="text-center py-3 px-2 text-kipiai-gray font-medium w-36">Taxa Claims</th>
@@ -30,7 +30,7 @@ export const ResultsTable = memo(function ResultsTable() {
             </thead>
             <tbody>
               {results.map((result, index) => result ? (
-                <tr key={index} className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+                <tr key={index} className="border-b border-gray-100 dark:border-gray-800/50 last:border-b-0 hover:bg-kipiai-gray-50 dark:hover:bg-kipiai-gray-800/50 transition-colors">
                   <td className="py-3 px-2 text-kipiai-dark dark:text-gray-200 font-medium">
                     {QUESTIONS[index]?.label || `Pergunta ${index + 1}`}
                   </td>

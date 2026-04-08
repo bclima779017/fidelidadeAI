@@ -33,8 +33,8 @@ export function StepIndicator() {
               {/* Connecting line */}
               {index < steps.length - 1 && (
                 <div
-                  className={`absolute left-[11px] top-6 w-0.5 h-6 ${
-                    isCompleted ? "bg-kipiai-green" : "bg-gray-700"
+                  className={`absolute left-[11px] top-6 w-0.5 h-6 transition-colors duration-500 ${
+                    isCompleted ? "bg-kipiai-green" : "bg-gray-700/50"
                   }`}
                   aria-hidden="true"
                 />
@@ -44,13 +44,13 @@ export function StepIndicator() {
               <div
                 className={`
                   flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center
-                  text-xs font-bold transition-colors
+                  text-xs font-bold transition-all duration-300
                   ${
                     isCompleted
                       ? "bg-kipiai-green text-white"
                       : isCurrent
-                      ? "bg-kipiai-blue text-white"
-                      : "bg-gray-700 text-gray-500"
+                      ? "bg-kipiai-blue text-white shadow-kipiai-glow animate-glow-pulse"
+                      : "bg-gray-800 text-gray-600"
                   }
                 `}
                 aria-hidden="true"
@@ -77,15 +77,15 @@ export function StepIndicator() {
               {/* Label */}
               <span
                 className={`
-                  text-sm pt-0.5 pb-6 transition-colors
+                  text-sm pt-0.5 pb-6 transition-all duration-300
                   ${
                     isCompleted
                       ? "text-kipiai-green font-medium"
                       : isCurrent
                       ? "text-white font-medium"
-                      : "text-gray-600"
+                      : "text-gray-500"
                   }
-                  ${isFuture ? "opacity-50" : ""}
+                  ${isFuture ? "opacity-35" : ""}
                 `}
               >
                 {item.label}

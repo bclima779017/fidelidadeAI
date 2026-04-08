@@ -20,10 +20,10 @@ export const ResultCard = memo(function ResultCard({ result, index }: ResultCard
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, delay: index * 0.08 }}
-      className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden"
+      className="bg-white dark:bg-kipiai-gray-800 rounded-xl shadow-kipiai-sm border border-gray-100 dark:border-gray-800/50 hover:shadow-kipiai-md transition-shadow duration-200 overflow-hidden"
     >
       <button
-        className="w-full flex items-center gap-3 p-4 hover:bg-gray-50 dark:hover:bg-gray-750 transition-colors text-left cursor-pointer"
+        className="w-full flex items-center gap-3 p-4 hover:bg-kipiai-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left cursor-pointer"
         onClick={() => setExpanded(!expanded)}
         aria-expanded={expanded}
         aria-label={`${question} — Score: ${result.score}`}
@@ -58,13 +58,13 @@ export const ResultCard = memo(function ResultCard({ result, index }: ResultCard
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <h4 className="text-xs font-semibold text-kipiai-gray uppercase tracking-wider mb-2">Resposta do Especialista</h4>
-                  <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 text-sm text-kipiai-dark dark:text-gray-200 whitespace-pre-wrap">
+                  <div className="bg-kipiai-gray-50 dark:bg-kipiai-gray-900 rounded-lg p-3 text-sm text-kipiai-dark dark:text-gray-200 whitespace-pre-wrap">
                     {result.expert_answer || result.official_answer || "Nao informada"}
                   </div>
                 </div>
                 <div>
                   <h4 className="text-xs font-semibold text-kipiai-gray uppercase tracking-wider mb-2">Resposta da IA</h4>
-                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 text-sm text-kipiai-dark dark:text-gray-200 whitespace-pre-wrap">
+                  <div className="bg-kipiai-blue-50 dark:bg-kipiai-blue-900/20 rounded-lg p-3 text-sm text-kipiai-dark dark:text-gray-200 whitespace-pre-wrap">
                     {result.ai_answer || result.resposta_ia || "Nao disponivel"}
                   </div>
                 </div>
@@ -79,7 +79,7 @@ export const ResultCard = memo(function ResultCard({ result, index }: ResultCard
                     { label: "Match Semantico", value: result.semantic_match ?? result.match_semantico != null ? `${Math.round(result.semantic_match ?? result.match_semantico ?? 0)}%` : "N/A" },
                     { label: "Taxa Claims", value: result.claims_rate ?? result.taxa_claims != null ? `${Math.round(result.claims_rate ?? result.taxa_claims ?? 0)}%` : "N/A" },
                   ].map((item) => (
-                    <div key={item.label} className="bg-gray-50 dark:bg-gray-900 rounded-lg p-3 text-center">
+                    <div key={item.label} className="bg-kipiai-gray-50 dark:bg-kipiai-gray-900 rounded-lg p-3 text-center">
                       <p className="text-xs text-kipiai-gray mb-1">{item.label}</p>
                       <p className="text-lg font-bold text-kipiai-dark dark:text-white">{item.value}</p>
                     </div>
@@ -103,13 +103,13 @@ export const ResultCard = memo(function ResultCard({ result, index }: ResultCard
                   <h4 className="text-xs font-semibold text-kipiai-gray uppercase tracking-wider mb-2">Analise de Claims</h4>
                   <div className="space-y-1.5" role="list">
                     {(result.claims_preservados || []).map((claim, ci) => (
-                      <div key={`p-${ci}`} role="listitem" className="flex items-start gap-2 bg-gray-50 dark:bg-gray-900 rounded-lg p-2 text-sm">
+                      <div key={`p-${ci}`} role="listitem" className="flex items-start gap-2 bg-kipiai-gray-50 dark:bg-kipiai-gray-900 rounded-lg p-2 text-sm">
                         <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-xs bg-kipiai-green text-white" aria-label="Preservado">{"\u2713"}</span>
                         <span className="text-kipiai-dark dark:text-gray-200">{claim}</span>
                       </div>
                     ))}
                     {(result.claims_omitidos || []).map((claim, ci) => (
-                      <div key={`o-${ci}`} role="listitem" className="flex items-start gap-2 bg-gray-50 dark:bg-gray-900 rounded-lg p-2 text-sm">
+                      <div key={`o-${ci}`} role="listitem" className="flex items-start gap-2 bg-kipiai-gray-50 dark:bg-kipiai-gray-900 rounded-lg p-2 text-sm">
                         <span className="mt-0.5 flex-shrink-0 w-4 h-4 rounded-full flex items-center justify-center text-xs bg-kipiai-red text-white" aria-label="Omitido">{"\u2717"}</span>
                         <span className="text-kipiai-dark dark:text-gray-200">{claim}</span>
                       </div>

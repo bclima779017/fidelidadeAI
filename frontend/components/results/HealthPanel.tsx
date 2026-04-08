@@ -7,7 +7,7 @@ import { EvalHealth } from "@/lib/types";
 import { Tooltip } from "@/components/ui/Tooltip";
 
 const GRADE_STYLES = {
-  green: "bg-kipiai-green text-white",
+  green: "bg-kipiai-gradient text-white",
   blue: "bg-kipiai-blue text-white",
   yellow: "bg-yellow-500 text-white",
   red: "bg-kipiai-red text-white",
@@ -39,7 +39,7 @@ interface IndicatorProps {
 function Indicator({ label, value, warn, tooltip, extra }: IndicatorProps) {
   return (
     <Tooltip content={tooltip}>
-      <div className={`rounded-lg p-3 text-center cursor-help ${warn ? "bg-yellow-50 dark:bg-yellow-900/20" : "bg-gray-50 dark:bg-gray-900"}`}>
+      <div className={`rounded-lg p-3 text-center cursor-help border transition-colors ${warn ? "bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200/50 dark:border-yellow-800/30" : "bg-kipiai-gray-50 dark:bg-kipiai-gray-900 border-gray-100 dark:border-gray-800/50"}`}>
         <p className="text-xs text-kipiai-gray dark:text-gray-400 mb-1">{label}</p>
         <p className={`text-lg font-bold ${warn ? "text-yellow-600" : "text-kipiai-green"}`}>{value}</p>
         {extra && <p className="text-xs text-yellow-600 mt-1">{extra}</p>}
@@ -60,7 +60,7 @@ export const HealthPanel = memo(function HealthPanel() {
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.15 }}
-      className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden"
+      className="bg-white dark:bg-kipiai-gray-800 rounded-xl shadow-kipiai-sm border border-gray-100 dark:border-gray-800/50 overflow-hidden"
     >
       <div className="flex items-center justify-between p-5 pb-0">
         <h3 className="text-lg font-semibold text-kipiai-dark dark:text-white">Saude da Avaliacao</h3>
@@ -86,7 +86,7 @@ export const HealthPanel = memo(function HealthPanel() {
                 { label: "Chunks", value: ragStats.total_chunks },
                 { label: "Chunks/Pag", value: ragStats.total_pages > 0 ? (ragStats.total_chunks / ragStats.total_pages).toFixed(1) : "0" },
               ].map((item) => (
-                <div key={item.label} className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-3 text-center">
+                <div key={item.label} className="bg-kipiai-blue-50 dark:bg-kipiai-blue-900/20 rounded-lg p-3 text-center border border-kipiai-blue/10 dark:border-kipiai-blue/5">
                   <p className="text-xs text-kipiai-gray dark:text-gray-400 mb-1">{item.label}</p>
                   <p className="text-xl font-bold text-kipiai-dark dark:text-white">{item.value}</p>
                 </div>
