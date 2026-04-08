@@ -168,7 +168,7 @@ export function EvaluationProgress() {
             </span>
             <div className="flex items-center gap-3">
               {isRunning && (
-                <span className="font-mono text-xs text-kipiai-blue bg-kipiai-blue/10 dark:bg-kipiai-blue/20 px-2 py-0.5 rounded">
+                <span className="font-mono text-xs text-kipiai-blue glass px-2 py-0.5 rounded">
                   {heartbeat.formattedTime}
                 </span>
               )}
@@ -182,7 +182,7 @@ export function EvaluationProgress() {
 
         {/* Heartbeat + cancel */}
         {isRunning && !isDone && (
-          <div className="flex items-center gap-3 bg-kipiai-blue/5 dark:bg-kipiai-blue/10 rounded-lg px-4 py-2.5">
+          <div className="flex items-center gap-3 bg-kipiai-blue/5 dark:bg-kipiai-blue/10 rounded-lg px-4 py-2.5 border-l-2 border-kipiai-blue">
             {/* Spinner pulsante */}
             <div className="flex-shrink-0 relative w-5 h-5">
               <div className="absolute inset-0 rounded-full bg-kipiai-blue/30 animate-ping" />
@@ -281,12 +281,12 @@ export function EvaluationProgress() {
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="bg-kipiai-green/10 dark:bg-kipiai-green/20 border border-kipiai-green/20 rounded-lg p-3 flex items-center gap-2"
+            className="bg-kipiai-gradient p-3 rounded-lg flex items-center gap-2"
           >
-            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-kipiai-green flex-shrink-0">
+            <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-white flex-shrink-0">
               <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><path d="m9 11 3 3L22 4" />
             </svg>
-            <span className="text-sm text-kipiai-green font-medium">
+            <span className="text-sm text-white font-medium">
               Todas as perguntas foram avaliadas com sucesso
             </span>
           </motion.div>

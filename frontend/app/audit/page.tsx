@@ -41,14 +41,17 @@ export default function AuditPage() {
   const ragStats = useAuditStore((s) => s.ragStats);
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-8 space-y-8">
+    <div className="max-w-4xl mx-auto px-6 py-8 space-y-6">
       <WelcomeModal />
 
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
-        <h1 className="text-3xl font-bold text-kipiai-dark dark:text-white">
-          Auditoria de Fidelidade
-        </h1>
-        <p className="text-kipiai-gray dark:text-gray-400 mt-1">
+        <div className="flex items-center gap-3">
+          <div className="w-1 h-8 bg-kipiai-gradient rounded-full" />
+          <h1 className="text-3xl font-bold text-kipiai-dark dark:text-white">
+            Auditoria de Fidelidade
+          </h1>
+        </div>
+        <p className="text-kipiai-gray dark:text-gray-400 mt-1 ml-[19px]">
           Avalie a fidelidade das respostas de IA ao conteudo do seu site
         </p>
       </motion.div>
@@ -65,7 +68,7 @@ export default function AuditPage() {
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
-            className="flex items-center gap-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3 text-sm overflow-hidden"
+            className="flex items-center gap-4 glass border-kipiai-blue/20 dark:border-kipiai-blue/10 rounded-lg p-3 text-sm overflow-hidden"
           >
             <span className="text-blue-700 dark:text-blue-400 font-medium">RAG ativo</span>
             <span className="text-blue-600 dark:text-blue-300">

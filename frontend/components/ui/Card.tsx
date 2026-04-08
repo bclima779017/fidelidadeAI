@@ -8,6 +8,7 @@ interface CardProps {
   defaultOpen?: boolean;
   children: React.ReactNode;
   className?: string;
+  glass?: boolean;
 }
 
 export function Card({
@@ -16,11 +17,12 @@ export function Card({
   defaultOpen = true,
   children,
   className = "",
+  glass = false,
 }: CardProps) {
   const [open, setOpen] = useState(defaultOpen);
 
   return (
-    <div className={`bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 ${className}`}>
+    <div className={`${glass ? "glass" : "bg-white dark:bg-kipiai-gray-800"} rounded-xl shadow-kipiai-sm hover:shadow-kipiai-md border border-gray-100 dark:border-gray-800/50 p-6 transition-shadow duration-200 ${className}`}>
       {title && (
         <div
           className={`flex items-center justify-between mb-4 ${

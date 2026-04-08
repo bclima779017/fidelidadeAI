@@ -52,7 +52,11 @@ export const ScoreCards = memo(function ScoreCards() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: i * 0.1 }}
-          className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-6 flex flex-col items-center"
+          className={`rounded-xl p-6 flex flex-col items-center border transition-shadow duration-200 ${
+            i === 0
+              ? "bg-white dark:bg-kipiai-gray-800 shadow-kipiai-md border-kipiai-blue/20 dark:border-kipiai-blue/10"
+              : "bg-white dark:bg-kipiai-gray-800 shadow-kipiai-sm hover:shadow-kipiai-md border-gray-100 dark:border-gray-800/50"
+          }`}
           role="article"
           aria-label={`${card.label}: ${card.value}`}
         >

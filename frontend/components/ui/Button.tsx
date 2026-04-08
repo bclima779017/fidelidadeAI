@@ -3,7 +3,7 @@
 import React from "react";
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: "primary" | "secondary" | "danger";
+  variant?: "primary" | "secondary" | "danger" | "gradient";
   size?: "sm" | "md" | "lg";
   loading?: boolean;
   children: React.ReactNode;
@@ -11,11 +11,13 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantStyles = {
   primary:
-    "bg-kipiai-blue hover:bg-kipiai-blue-hover text-white shadow-md",
+    "bg-kipiai-blue hover:bg-kipiai-blue-hover text-white shadow-kipiai-sm hover:shadow-kipiai-md",
   secondary:
-    "border-2 border-kipiai-blue text-kipiai-blue hover:bg-kipiai-blue hover:text-white",
+    "border border-kipiai-blue/30 text-kipiai-blue hover:bg-kipiai-blue hover:text-white hover:border-transparent",
   danger:
     "bg-kipiai-red hover:bg-red-600 text-white shadow-md",
+  gradient:
+    "bg-kipiai-gradient text-white shadow-kipiai-md hover:shadow-kipiai-lg hover:-translate-y-0.5",
 };
 
 const sizeStyles = {
@@ -36,8 +38,8 @@ export function Button({
   return (
     <button
       className={`
-        inline-flex items-center justify-center gap-2 font-semibold rounded-xl
-        transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed
+        inline-flex items-center justify-center gap-2 font-semibold rounded-lg
+        transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed
         ${variantStyles[variant]}
         ${sizeStyles[size]}
         ${className}

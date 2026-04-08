@@ -9,10 +9,10 @@ interface ScoreGaugeProps {
   label?: string;
 }
 
-function getColor(value: number): string {
-  if (value >= 70) return "#28a745";
-  if (value >= 50) return "#ffc107";
-  return "#dc3545";
+function getColor(value: number): { main: string; gradient: string } {
+  if (value >= 70) return { main: "#28a745", gradient: "#116dff" };
+  if (value >= 50) return { main: "#ffc107", gradient: "#f59e0b" };
+  return { main: "#dc3545", gradient: "#ef4444" };
 }
 
 export const ScoreGauge = memo(function ScoreGauge({
@@ -23,13 +23,27 @@ export const ScoreGauge = memo(function ScoreGauge({
   const clamped = Math.max(0, Math.min(100, value));
   const radius = (size - 12) / 2;
   const circumference = 2 * Math.PI * radius;
-  const color = value < 0 ? "#6c757d" : getColor(clamped);
+  const colors = value < 0 ? { main: "#6c757d", gradient: "#6c757d" } : getColor(clamped);
   const displayValue = value < 0 ? "—" : Math.round(clamped);
+  const gaugeId = `gauge-grad-${size}-${label || "default"}`;
 
   return (
     <div className="flex flex-col items-center gap-1">
       <div className="relative" style={{ width: size, height: size }}>
         <svg width={size} height={size} className="-rotate-90">
+          <defs>
+            <linearGradient id={gaugeId} x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor={colors.gradient} />
+              <stop offset="100%" stopColor={colors.main} />
+            </linearGradient>
+            <filter id={`${gaugeId}-glow`}>
+              <feGaussianBlur stdDeviation="3" result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          </defs>
           {/* Background circle */}
           <circle
             cx={size / 2}
@@ -37,8 +51,8 @@ export const ScoreGauge = memo(function ScoreGauge({
             r={radius}
             fill="none"
             stroke="currentColor"
-            className="text-gray-200 dark:text-gray-700"
-            strokeWidth={10}
+            className="text-gray-100 dark:text-gray-800"
+            strokeWidth={8}
           />
           {/* Animated progress circle */}
           {value >= 0 && (
@@ -47,10 +61,11 @@ export const ScoreGauge = memo(function ScoreGauge({
               cy={size / 2}
               r={radius}
               fill="none"
-              stroke={color}
-              strokeWidth={10}
+              stroke={`url(#${gaugeId})`}
+              strokeWidth={8}
               strokeLinecap="round"
               strokeDasharray={circumference}
+              filter={`url(#${gaugeId}-glow)`}
               initial={{ strokeDashoffset: circumference }}
               animate={{ strokeDashoffset: circumference - (clamped / 100) * circumference }}
               transition={{ duration: 1.2, ease: "easeOut", delay: 0.2 }}
@@ -58,7 +73,7 @@ export const ScoreGauge = memo(function ScoreGauge({
           )}
         </svg>
         {/* Center value */}
-        <div className="absolute inset-0 flex items-center justify-center">
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
           <motion.span
             className="text-2xl font-bold text-kipiai-dark dark:text-white"
             initial={{ opacity: 0, scale: 0.5 }}
@@ -67,10 +82,13 @@ export const ScoreGauge = memo(function ScoreGauge({
           >
             {displayValue}
           </motion.span>
+          {value >= 0 && (
+            <span className="text-[10px] text-kipiai-gray dark:text-gray-500 -mt-0.5">/100</span>
+          )}
         </div>
       </div>
       {label && (
-        <span className="text-xs text-kipiai-gray dark:text-gray-400">{label}</span>
+        <span className="text-xs font-medium text-kipiai-gray dark:text-gray-400">{label}</span>
       )}
     </div>
   );

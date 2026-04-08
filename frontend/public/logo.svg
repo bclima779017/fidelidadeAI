@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 40" fill="none">
+  <defs>
+    <linearGradient id="brand-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#116dff"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+  </defs>
+  <!-- K icon mark -->
+  <rect x="0" y="4" width="32" height="32" rx="8" fill="url(#brand-gradient)"/>
+  <path d="M10 12v16M10 20l12-8M10 20l12 8" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Wordmark -->
+  <text x="42" y="28" font-family="Inter, Arial, sans-serif" font-size="22" font-weight="700" fill="currentColor">
+    <tspan fill="url(#brand-gradient)">Kipiai</tspan>
+  </text>
+</svg>

@@ -190,20 +190,34 @@ export function SiteInputForm() {
           error={error || undefined}
         />
 
-        {/* Seletor de modo */}
+        {/* Seletor de modo - pill toggle */}
         {!isCompleted && !loading && discoveredUrls.length === 0 && (
-          <fieldset className="flex items-center gap-4">
+          <fieldset>
             <legend className="sr-only">Modo de extracao</legend>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="radio" name="mode" checked={extractionMode === "single"}
-                onChange={() => setExtractionMode("single")} className="accent-kipiai-blue" />
-              Pagina unica
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="radio" name="mode" checked={extractionMode === "multi"}
-                onChange={() => setExtractionMode("multi")} className="accent-kipiai-blue" />
-              Site completo (sitemap)
-            </label>
+            <div className="inline-flex rounded-lg bg-gray-100 dark:bg-kipiai-gray-800 p-1">
+              <button
+                type="button"
+                onClick={() => setExtractionMode("single")}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all duration-200 ${
+                  extractionMode === "single"
+                    ? "bg-white dark:bg-kipiai-gray-900 text-kipiai-blue shadow-kipiai-sm"
+                    : "text-kipiai-gray hover:text-kipiai-dark dark:hover:text-gray-200"
+                }`}
+              >
+                Pagina unica
+              </button>
+              <button
+                type="button"
+                onClick={() => setExtractionMode("multi")}
+                className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all duration-200 ${
+                  extractionMode === "multi"
+                    ? "bg-white dark:bg-kipiai-gray-900 text-kipiai-blue shadow-kipiai-sm"
+                    : "text-kipiai-gray hover:text-kipiai-dark dark:hover:text-gray-200"
+                }`}
+              >
+                Site completo
+              </button>
+            </div>
           </fieldset>
         )}
 
@@ -211,11 +225,11 @@ export function SiteInputForm() {
         {!isCompleted && discoveredUrls.length === 0 && !extractionProgress && (
           <div className="flex gap-3">
             {extractionMode === "single" ? (
-              <Button onClick={handleExtractSingle} loading={loading} disabled={!url.trim()}>
+              <Button variant="gradient" onClick={handleExtractSingle} loading={loading} disabled={!url.trim()}>
                 {loading ? loadingPhase : "Extrair Contexto"}
               </Button>
             ) : (
-              <Button onClick={handleDiscoverSitemap} loading={loading} disabled={!url.trim()}>
+              <Button variant="gradient" onClick={handleDiscoverSitemap} loading={loading} disabled={!url.trim()}>
                 {loading ? loadingPhase : "Descobrir Paginas"}
               </Button>
             )}
@@ -270,9 +284,9 @@ export function SiteInputForm() {
               </div>
             </div>
 
-            <div className="max-h-64 overflow-y-auto border border-gray-200 rounded-lg">
+            <div className="max-h-64 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg">
               <table className="w-full text-sm">
-                <thead className="bg-gray-50 sticky top-0">
+                <thead className="bg-kipiai-gray-50 dark:bg-kipiai-gray-800 sticky top-0">
                   <tr>
                     <th className="w-10 px-3 py-2" />
                     <th className="text-left px-3 py-2 text-kipiai-gray font-medium">URL</th>
@@ -281,13 +295,13 @@ export function SiteInputForm() {
                 </thead>
                 <tbody>
                   {discoveredUrls.map((u) => (
-                    <tr key={u.url} className="border-t border-gray-100 hover:bg-gray-50">
+                    <tr key={u.url} className="border-t border-gray-100 dark:border-gray-800/50 hover:bg-kipiai-blue-50/50 dark:hover:bg-kipiai-blue-900/10 transition-colors">
                       <td className="px-3 py-1.5 text-center">
                         <input type="checkbox" checked={selectedUrls.includes(u.url)}
                           onChange={() => toggleUrlSelection(u.url)} className="accent-kipiai-blue"
                           aria-label={`Selecionar ${u.url}`} />
                       </td>
-                      <td className="px-3 py-1.5 text-kipiai-dark truncate max-w-md" title={u.url}>{u.url}</td>
+                      <td className="px-3 py-1.5 text-kipiai-dark dark:text-gray-200 truncate max-w-md" title={u.url}>{u.url}</td>
                       <td className="px-3 py-1.5 text-kipiai-gray text-xs">{u.source}</td>
                     </tr>
                   ))}
@@ -296,7 +310,7 @@ export function SiteInputForm() {
             </div>
 
             <div className="flex items-center gap-4">
-              <Button onClick={handleExtractSelected} loading={loading} disabled={selectedUrls.length === 0}>
+              <Button variant="gradient" onClick={handleExtractSelected} loading={loading} disabled={selectedUrls.length === 0}>
                 {loading && !extractionProgress ? loadingPhase : `Extrair ${selectedUrls.length} paginas`}
               </Button>
               <span className="text-sm text-kipiai-gray">
